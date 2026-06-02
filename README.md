@@ -58,7 +58,7 @@
 
 ```bash
 # 1. 克隆仓库
-git clone <your-repo-url>
+git clone https://github.com/ACKADE/babu_System-Analysis-Design-Modelling-and-Development.git
 cd babu_System-Analysis-Design-Modelling-and-Development
 
 # 2. 启动全部服务（MySQL + 后端 + 两个前端）
