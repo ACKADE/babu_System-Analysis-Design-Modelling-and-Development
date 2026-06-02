@@ -911,7 +911,7 @@ const { data: cartData } = useQuery({
   enabled: isLoggedIn,
 });
 
-const cartCount = cartData?.length || 0;
+const cartCount = cartData?.reduce((sum: number, item: any) => sum + item.quantity, 0) || 0;
 
 // 将购物车 Link 替换为:
 <Link to="/cart" className="text-gray-600 hover:text-blue-600 relative">
@@ -946,12 +946,13 @@ git commit -m "feat: implement cart page with quantity controls and badge"
 ```typescript
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cartApi } from '../api/cart';
 import { ordersApi } from '../api/orders';
 
 export function Checkout() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [recipientName, setRecipientName] = useState('');
   const [recipientAddress, setRecipientAddress] = useState('');
   const [recipientPhone, setRecipientPhone] = useState('');
@@ -967,6 +968,7 @@ export function Checkout() {
   const createOrderMutation = useMutation({
     mutationFn: () => ordersApi.create({ recipientName, recipientAddress, recipientPhone }),
     onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['cart'] });
       navigate(`/payment-success/${res.data.id}`, { replace: true });
     },
   });
@@ -1055,18 +1057,24 @@ import { ordersApi } from '../api/orders';
 export function PaymentSuccess() {
   const { orderId } = useParams<{ orderId: string }>();
 
-  const { data: order, isLoading } = useQuery({
+  const { data: order, isLoading, isError } = useQuery({
     queryKey: ['order', orderId],
     queryFn: async () => { const res = await ordersApi.getById(Number(orderId)); return res.data; },
     enabled: !!orderId,
+    retry: 1,
   });
 
   if (isLoading) {
     return <div className="text-center py-20 text-gray-400">加载中...</div>;
   }
 
-  if (!order) {
-    return <div className="text-center py-20 text-gray-500">订单不存在</div>;
+  if (isError || !order) {
+    return (
+      <div className="text-center py-20">
+        <p className="text-gray-500 text-lg mb-4">订单不存在或无权查看</p>
+        <Link to="/orders" className="text-blue-600 hover:underline">返回我的订单</Link>
+      </div>
+    );
   }
 
   return (
@@ -1816,12 +1824,13 @@ git commit -m "feat: scaffold store frontend with all API modules"
 
 - [ ] **Step 1: 实现商店端 Login 页面（含 ADMIN 角色校验）**
 
-基于用户端 Login 代码，修改以下 5 点：
+基于用户端 Login 代码，修改以下 6 点：
 - Register 的 `role` 参数为 `'ADMIN'`
 - 登录后跳转到 `/`（仪表盘）
 - 标题文案为"商店管理登录"/"商店管理注册"
 - 颜色主题使用 `green` 系（`blue-600` → `green-600`）
-- **关键差异：** `onSuccess` 中检查 `login()` 返回值，若为 `false`（非 ADMIN 角色）则提示"无权限访问，请使用管理员账号"：
+- **新增 `localError` 状态变量：** 用户端 Login 直接使用 `loginMutation.isError` 显示错误，但商店端需要 `const [localError, setLocalError] = useState('')` 来额外处理"非 ADMIN 角色"的拒绝场景（此时接口返回成功但角色校验失败，不会触发 `isError`）
+- **关键差异：** `onSuccess` 中检查 `login()` 返回值，若为 `false`（非 ADMIN 角色）则 `setLocalError('无权限访问，请使用管理员账号')`；同时在 JSX 中渲染 `{localError && <div>...}</div>` 错误提示
 
 ```typescript
 const loginMutation = useMutation({
@@ -2145,7 +2154,7 @@ export function ProductForm() {
       if (imageFile) formData.append('image', imageFile);
       return isEdit ? productsApi.update(Number(id), formData) : productsApi.create(formData);
     },
-    onSuccess: () => navigate('/', { replace: true }),
+    onSuccess: () => navigate('/products', { replace: true }),
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -2248,7 +2257,7 @@ export function ProductForm() {
             className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
             {mutation.isPending ? '保存中...' : '保存'}
           </button>
-          <button type="button" onClick={() => navigate(-1)}
+          <button type="button" onClick={() => navigate('/products')}
             className="px-6 py-2 border rounded-lg hover:bg-gray-50">取消</button>
         </div>
       </form>

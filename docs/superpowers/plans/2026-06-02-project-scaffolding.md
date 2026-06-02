@@ -78,7 +78,7 @@ services:
       mysql:
         condition: service_healthy
     command: >
-      sh -c "npx prisma migrate deploy && npx prisma db seed && node dist/index.js"
+      sh -c "npx prisma db push && npx prisma db seed && npx tsx watch src/index.ts"
 
 volumes:
   mysql_data:
@@ -120,26 +120,17 @@ EOF
 - [ ] **Step 2: 创建 backend/Dockerfile**
 
 ```dockerfile
-FROM node:20-alpine AS builder
+FROM node:20-alpine
 WORKDIR /app
+RUN apk add --no-cache openssl
 COPY package*.json ./
 COPY tsconfig.json ./
 COPY prisma ./prisma/
 RUN npm ci
 COPY src ./src/
-RUN npm run build
-
-FROM node:20-alpine
-WORKDIR /app
-RUN apk add --no-cache openssl
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/prisma ./prisma
-COPY package*.json ./
-COPY tsconfig.json ./
 RUN mkdir -p uploads
 EXPOSE 3000
-CMD ["node", "dist/index.js"]
+CMD ["npx", "tsx", "watch", "src/index.ts"]
 ```
 
 - [ ] **Step 3: Commit**
@@ -183,6 +174,8 @@ git commit -m "chore: add backend Dockerfile"
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "express-rate-limit": "^7.3.1",
+    "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
     "swagger-jsdoc": "^6.2.8",
@@ -233,12 +226,25 @@ git commit -m "chore: add backend Dockerfile"
 }
 ```
 
-- [ ] **Step 3: 创建 backend/.env**
+- [ ] **Step 3: 创建 backend/.env 和 backend/.env.example**
+
+创建 `backend/.env`（不提交 Git）：
 
 ```
 DATABASE_URL=mysql://ecommerce:ecommerce123@localhost:3306/ecommerce
 JWT_ACCESS_SECRET=access-secret-dev-only
 JWT_REFRESH_SECRET=refresh-secret-dev-only
+JWT_ACCESS_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
+PORT=3000
+```
+
+创建 `backend/.env.example`（提交 Git 作为模板）：
+
+```
+DATABASE_URL=mysql://user:password@localhost:3306/ecommerce
+JWT_ACCESS_SECRET=change-me
+JWT_REFRESH_SECRET=change-me
 JWT_ACCESS_EXPIRES_IN=15m
 JWT_REFRESH_EXPIRES_IN=7d
 PORT=3000
@@ -253,7 +259,7 @@ cd backend && npm install
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/package.json backend/package-lock.json backend/tsconfig.json backend/.env
+git add backend/package.json backend/package-lock.json backend/tsconfig.json backend/.env.example
 git commit -m "chore: init backend project with dependencies"
 ```
 
@@ -326,7 +332,7 @@ model CartItem {
   quantity  Int      @default(1)
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id])
 
   @@unique([userId, productId])
 }
@@ -346,7 +352,7 @@ model Order {
   returnAttempts       Int         @default(0)
   refundedAt           DateTime?
   createdAt            DateTime    @default(now())
-  user                 User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                 User        @relation(fields: [userId], references: [id])
   items                OrderItem[]
   review               Review?
 }
@@ -360,7 +366,7 @@ model OrderItem {
   productImage String
   quantity     Int
   order        Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product      Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product      Product @relation(fields: [productId], references: [id])
 }
 
 model OrderSequence {
@@ -376,8 +382,8 @@ model Review {
   rating    Int
   content   String?  @db.Text
   createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
   order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }
 ```
@@ -446,6 +452,12 @@ git commit -m "feat: add Prisma schema and seed"
 
 ```typescript
 import { PrismaClient } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
+
+// Prisma Decimal → Number 全局序列化，避免 API 响应中出现 $numberDecimal 脏数据
+(Decimal.prototype as any).toJSON = function () {
+  return Number(this.toString());
+};
 
 const prisma = new PrismaClient();
 
@@ -635,6 +647,25 @@ export const loginSchema = z.object({
     password: z.string().min(1, '请输入密码'),
   }),
 });
+
+export const forgotPasswordSchema = z.object({
+  body: z.object({
+    email: z.string().email('邮箱格式不正确'),
+  }),
+});
+
+export const updateProfileSchema = z.object({
+  body: z.object({
+    name: z.string().min(2, '用户名至少2个字符').max(50, '用户名最多50个字符'),
+  }),
+});
+
+export const updatePasswordSchema = z.object({
+  body: z.object({
+    oldPassword: z.string().min(1, '请输入旧密码'),
+    newPassword: z.string().min(6, '新密码至少6位'),
+  }),
+});
 ```
 
 - [ ] **Step 8: 创建 backend/src/schemas/product.schema.ts**
@@ -683,6 +714,20 @@ export const updateOrderStatusSchema = z.object({
     status: z.enum(['SHIPPED']), // 管理员仅允许发货操作
   }),
 });
+
+export const createReviewSchema = z.object({
+  body: z.object({
+    productId: z.number().int().positive('请选择评价商品'),
+    rating: z.number().int().min(1, '评分至少1星').max(5, '评分最多5星'),
+    content: z.string().optional(),
+  }),
+});
+
+export const returnRequestSchema = z.object({
+  body: z.object({
+    returnReason: z.string().min(5, '退货原因至少5个字'),
+  }),
+});
 ```
 
 - [ ] **Step 10: 创建 backend/src/schemas/cart.schema.ts**
@@ -709,6 +754,7 @@ export const updateCartItemSchema = z.object({
 ```typescript
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import path from 'path';
 import swaggerUi from 'swagger-ui-express';
 import { errorHandler } from './middleware/errorHandler';
@@ -723,6 +769,7 @@ import dashboardRoutes from './routes/dashboard';
 
 const app = express();
 
+app.use(helmet());
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.resolve(__dirname, '../uploads')));
@@ -815,13 +862,23 @@ git commit -m "feat: add Express app entry, middleware, and validation schemas"
 
 ```typescript
 import { Router, Request, Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import { hash, compare } from 'bcryptjs';
 import prisma from '../lib/prisma';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../lib/jwt';
 import { validate } from '../middleware/validate';
-import { registerSchema, loginSchema } from '../schemas/auth.schema';
+import { registerSchema, loginSchema, forgotPasswordSchema, updateProfileSchema, updatePasswordSchema } from '../schemas/auth.schema';
 
 const router = Router();
+
+// 认证端点限流：15分钟内最多20次
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { message: '请求过于频繁，请稍后再试' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 /**
  * @swagger
@@ -845,7 +902,7 @@ const router = Router();
  *       201: { description: 注册成功 }
  *       400: { description: 参数错误或邮箱已注册 }
  */
-router.post('/register', validate(registerSchema), async (req: Request, res: Response): Promise<void> => {
+router.post('/register', authLimiter, validate(registerSchema), async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, email, password, role } = req.body;
 
@@ -920,7 +977,7 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
  *       200: { description: 登录成功 }
  *       400: { description: 邮箱或密码错误 }
  */
-router.post('/login', validate(loginSchema), async (req: Request, res: Response): Promise<void> => {
+router.post('/login', authLimiter, validate(loginSchema), async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
     const user = await prisma.user.findUnique({ where: { email } });
@@ -971,7 +1028,7 @@ router.post('/login', validate(loginSchema), async (req: Request, res: Response)
  *       200: { description: 刷新成功 }
  *       401: { description: 刷新令牌无效 }
  */
-router.post('/refresh', async (req: Request, res: Response): Promise<void> => {
+router.post('/refresh', authLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const { refreshToken } = req.body;
     if (!refreshToken) {
@@ -1025,7 +1082,7 @@ router.post('/logout', (_req: Request, res: Response): void => {
  *       200: { description: 密码重置成功 }
  *       404: { description: 邮箱未注册 }
  */
-router.post('/forgot-password', async (req: Request, res: Response): Promise<void> => {
+router.post('/forgot-password', authLimiter, validate(forgotPasswordSchema), async (req: Request, res: Response): Promise<void> => {
   try {
     const { email } = req.body;
     const user = await prisma.user.findUnique({ where: { email } });
@@ -1091,13 +1148,9 @@ router.get('/me', authenticate, async (req: Request, res: Response): Promise<voi
  *     responses:
  *       200: { description: 更新成功 }
  */
-router.put('/profile', authenticate, async (req: Request, res: Response): Promise<void> => {
+router.put('/profile', authenticate, validate(updateProfileSchema), async (req: Request, res: Response): Promise<void> => {
   try {
     const { name } = req.body;
-    if (!name || name.length < 2) {
-      res.status(400).json({ message: '用户名至少2个字符' });
-      return;
-    }
     const user = await prisma.user.update({
       where: { id: req.user!.userId },
       data: { name },
@@ -1131,13 +1184,9 @@ router.put('/profile', authenticate, async (req: Request, res: Response): Promis
  *       200: { description: 密码修改成功 }
  *       400: { description: 旧密码错误 }
  */
-router.put('/password', authenticate, async (req: Request, res: Response): Promise<void> => {
+router.put('/password', authenticate, validate(updatePasswordSchema), async (req: Request, res: Response): Promise<void> => {
   try {
     const { oldPassword, newPassword } = req.body;
-    if (!newPassword || newPassword.length < 6) {
-      res.status(400).json({ message: '新密码至少6位' });
-      return;
-    }
     const user = await prisma.user.findUnique({ where: { id: req.user!.userId } });
     if (!user) {
       res.status(404).json({ message: '用户不存在' });
@@ -1173,8 +1222,19 @@ import { validate } from '../middleware/validate';
 import { upload } from '../middleware/upload';
 import { createProductSchema, updateProductSchema } from '../schemas/product.schema';
 import path from 'path';
+import fs from 'fs';
 
 const router = Router();
+
+/** 删除旧图片文件（如果存在） */
+function deleteFileIfExists(relativePath: string | null | undefined): void {
+  if (!relativePath) return;
+  // __dirname = backend/src/routes → ../.. → backend/
+  const absolutePath = path.resolve(__dirname, '..', '..', relativePath);
+  if (fs.existsSync(absolutePath)) {
+    fs.unlinkSync(absolutePath);
+  }
+}
 
 /**
  * @swagger
@@ -1270,6 +1330,7 @@ router.post(
   ]),
   validate(createProductSchema),
   async (req: Request, res: Response): Promise<void> => {
+    const uploadedFiles: string[] = [];
     try {
       const { name, summary, description, price, stock, categoryId } = req.body;
       const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
@@ -1280,6 +1341,10 @@ router.post(
       const imageUrl = files?.image?.[0]
         ? path.posix.join('uploads', files.image[0].filename)
         : '';
+
+      // 记录已上传的文件路径，用于失败回滚
+      if (thumbnailUrl) uploadedFiles.push(thumbnailUrl);
+      if (imageUrl) uploadedFiles.push(imageUrl);
 
       const product = await prisma.product.create({
         data: {
@@ -1295,6 +1360,10 @@ router.post(
       });
       res.status(201).json(product);
     } catch (error) {
+      // 创建失败时清理孤儿图片文件
+      for (const filePath of uploadedFiles) {
+        deleteFileIfExists(filePath);
+      }
       console.error('Create product error:', error);
       res.status(500).json({ message: '创建商品失败' });
     }
@@ -1335,6 +1404,7 @@ router.put(
 
       const { name, summary, description, price, stock, categoryId } = req.body;
       const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+      const uploadedFiles: string[] = [];
 
       const data: Record<string, unknown> = {};
       if (name !== undefined) data.name = name;
@@ -1344,17 +1414,38 @@ router.put(
       if (stock !== undefined) data.stock = Number(stock);
       if (categoryId !== undefined) data.categoryId = Number(categoryId);
       if (files?.thumbnail?.[0]) {
-        data.thumbnailUrl = path.posix.join('uploads', files.thumbnail[0].filename);
+        const newPath = path.posix.join('uploads', files.thumbnail[0].filename);
+        uploadedFiles.push(newPath);
+        data.thumbnailUrl = newPath;
       }
       if (files?.image?.[0]) {
-        data.imageUrl = path.posix.join('uploads', files.image[0].filename);
+        const newPath = path.posix.join('uploads', files.image[0].filename);
+        uploadedFiles.push(newPath);
+        data.imageUrl = newPath;
       }
 
-      const product = await prisma.product.update({
-        where: { id: productId },
-        data,
-      });
-      res.json(product);
+      try {
+        const product = await prisma.product.update({
+          where: { id: productId },
+          data,
+        });
+
+        // 更新成功后删除旧图片文件
+        if (files?.thumbnail?.[0]) {
+          deleteFileIfExists(existing.thumbnailUrl);
+        }
+        if (files?.image?.[0]) {
+          deleteFileIfExists(existing.imageUrl);
+        }
+
+        res.json(product);
+      } catch (updateError) {
+        // 数据库更新失败时清理本次上传的新文件
+        for (const filePath of uploadedFiles) {
+          deleteFileIfExists(filePath);
+        }
+        throw updateError;
+      }
     } catch (error) {
       console.error('Update product error:', error);
       res.status(500).json({ message: '编辑商品失败' });
@@ -1599,7 +1690,7 @@ import { Router, Request, Response } from 'express';
 import prisma from '../lib/prisma';
 import { authenticate, requireRole } from '../middleware/auth';
 import { validate } from '../middleware/validate';
-import { createOrderSchema, updateOrderStatusSchema } from '../schemas/order.schema';
+import { createOrderSchema, updateOrderStatusSchema, returnRequestSchema } from '../schemas/order.schema';
 
 const router = Router();
 
@@ -1845,7 +1936,7 @@ router.get('/:id', authenticate, async (req: Request, res: Response): Promise<vo
  *             type: object
  *             required: [status]
  *             properties:
- *               status: { type: string, enum: [SHIPPED, COMPLETED] }
+ *               status: { type: string, enum: [SHIPPED] }
  *     responses:
  *       200: { description: 更新成功 }
  */
@@ -2010,7 +2101,7 @@ router.post('/:id/cancel', authenticate, requireRole('USER'), async (req: Reques
  *       200: { description: 退货申请已提交 }
  *       400: { description: 不允许申请或已达次数上限 }
  */
-router.post('/:id/return', authenticate, requireRole('USER'), async (req: Request, res: Response): Promise<void> => {
+router.post('/:id/return', authenticate, requireRole('USER'), validate(returnRequestSchema), async (req: Request, res: Response): Promise<void> => {
   try {
     const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) } });
     if (!order) {
@@ -2030,10 +2121,6 @@ router.post('/:id/return', authenticate, requireRole('USER'), async (req: Reques
       return;
     }
     const { returnReason } = req.body;
-    if (!returnReason || returnReason.length < 5) {
-      res.status(400).json({ message: '退货原因至少5个字' });
-      return;
-    }
     const updated = await prisma.order.update({
       where: { id: order.id },
       data: { status: 'RETURN_PENDING', returnReason },
@@ -2188,6 +2275,8 @@ export default router;
 import { Router, Request, Response } from 'express';
 import prisma from '../lib/prisma';
 import { authenticate, requireRole } from '../middleware/auth';
+import { validate } from '../middleware/validate';
+import { createReviewSchema } from '../schemas/order.schema';
 
 const router = Router();
 
@@ -2246,7 +2335,7 @@ router.get('/products/:id/reviews', async (req: Request, res: Response): Promise
  *       201: { description: 评价成功 }
  *       400: { description: 不允许评价或已评价过 }
  */
-router.post('/orders/:id/review', authenticate, requireRole('USER'), async (req: Request, res: Response): Promise<void> => {
+router.post('/orders/:id/review', authenticate, requireRole('USER'), validate(createReviewSchema), async (req: Request, res: Response): Promise<void> => {
   try {
     const orderId = Number(req.params.id);
     const order = await prisma.order.findUnique({ where: { id: orderId } });
@@ -2270,10 +2359,6 @@ router.post('/orders/:id/review', authenticate, requireRole('USER'), async (req:
     }
 
     const { productId, rating, content } = req.body;
-    if (!rating || rating < 1 || rating > 5) {
-      res.status(400).json({ message: '评分须在 1-5 之间' });
-      return;
-    }
 
     // 验证 productId 属于本订单商品
     const orderItem = await prisma.orderItem.findFirst({
@@ -2568,6 +2653,7 @@ export interface Product {
   thumbnailUrl: string;
   imageUrl: string;
   isActive: boolean;
+  categoryId: number;
 }
 
 export const productsApi = {
@@ -2673,14 +2759,38 @@ export function ProtectedRoute({ children }: Props) {
 - [ ] **Step 5: 创建布局组件 `frontend-user/src/components/Layout.tsx`**
 
 ```typescript
+import { useState, useRef, useEffect } from 'react';
 import { Link, Outlet, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { cartApi } from '../api/cart';
 import { useAuth } from '../hooks/useAuth';
 
 export function Layout() {
   const { user, isLoggedIn, logout } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // 购物车数量徽标
+  const { data: cartItems } = useQuery({
+    queryKey: ['cart'],
+    queryFn: async () => { const res = await cartApi.getAll(); return res.data; },
+    enabled: isLoggedIn,
+  });
+  const cartCount = cartItems?.reduce((sum: number, item: any) => sum + item.quantity, 0) || 0;
+
+  // 点击外部关闭下拉菜单
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleLogout = () => {
     queryClient.clear();
@@ -2697,16 +2807,42 @@ export function Layout() {
             <Link to="/" className="text-gray-600 hover:text-blue-600">商品</Link>
             {isLoggedIn && (
               <>
-                <Link to="/cart" className="text-gray-600 hover:text-blue-600">购物车</Link>
+                <Link to="/cart" className="text-gray-600 hover:text-blue-600 relative">
+                  购物车
+                  {cartCount > 0 && (
+                    <span className="absolute -top-2 -right-3 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                      {cartCount > 99 ? '99+' : cartCount}
+                    </span>
+                  )}
+                </Link>
                 <Link to="/orders" className="text-gray-600 hover:text-blue-600">我的订单</Link>
               </>
             )}
             {isLoggedIn ? (
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-gray-500">{user?.name}</span>
-                <button onClick={handleLogout} className="text-sm text-red-500 hover:text-red-700">
-                  退出
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  onClick={() => setDropdownOpen(!dropdownOpen)}
+                  className="text-sm text-gray-700 hover:text-blue-600 cursor-pointer"
+                >
+                  {user?.name} ▾
                 </button>
+                {dropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-32 bg-white rounded-lg shadow-lg border py-1 z-50">
+                    <Link
+                      to="/profile"
+                      onClick={() => setDropdownOpen(false)}
+                      className="block px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                    >
+                      个人中心
+                    </Link>
+                    <button
+                      onClick={handleLogout}
+                      className="block w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-50"
+                    >
+                      退出
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <Link to="/login" className="text-gray-600 hover:text-blue-600">登录</Link>
@@ -2787,6 +2923,13 @@ export function Register() {
 }
 ```
 
+`frontend-user/src/pages/Profile.tsx`:
+```typescript
+export function Profile() {
+  return <div>个人中心</div>;
+}
+```
+
 - [ ] **Step 7: 设置主入口和路由 `frontend-user/src/main.tsx`**
 
 ```typescript
@@ -2829,6 +2972,7 @@ import { Orders } from './pages/Orders';
 import { OrderDetail } from './pages/OrderDetail';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
+import { Profile } from './pages/Profile';
 
 export default function App() {
   return (
@@ -2844,6 +2988,7 @@ export default function App() {
           <Route path="payment-success/:orderId" element={<ProtectedRoute><PaymentSuccess /></ProtectedRoute>} />
           <Route path="orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
           <Route path="orders/:id" element={<ProtectedRoute><OrderDetail /></ProtectedRoute>} />
+          <Route path="profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         </Route>
       </Routes>
     </BrowserRouter>
@@ -3057,15 +3202,16 @@ export interface Product {
   thumbnailUrl: string;
   imageUrl: string;
   isActive: boolean;
+  categoryId: number;
 }
 
 export const productsApi = {
   getAll: (showAll = true) => apiClient.get<Product[]>('/products', { params: { all: showAll } }),
   getById: (id: number) => apiClient.get<Product>(`/products/${id}`),
   create: (formData: FormData) =>
-    apiClient.post('/products', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    apiClient.post('/products', formData),
   update: (id: number, formData: FormData) =>
-    apiClient.put(`/products/${id}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    apiClient.put(`/products/${id}`, formData),
   toggle: (id: number) => apiClient.patch(`/products/${id}/toggle`),
 };
 ```
@@ -3077,8 +3223,11 @@ import apiClient from './client';
 export const ordersApi = {
   getAll: () => apiClient.get('/orders'),
   getById: (id: number) => apiClient.get(`/orders/${id}`),
-  updateStatus: (id: number, status: 'SHIPPED' | 'COMPLETED') =>
+  updateStatus: (id: number, status: 'SHIPPED') =>
     apiClient.patch(`/orders/${id}/status`, { status }),
+  approveReturn: (id: number) => apiClient.post(`/orders/${id}/return/approve`),
+  rejectReturn: (id: number, rejectReason?: string) =>
+    apiClient.post(`/orders/${id}/return/reject`, { rejectReason }),
 };
 ```
 
@@ -3086,36 +3235,92 @@ export const ordersApi = {
 
 `frontend-store/src/components/Layout.tsx`:
 ```typescript
-import { Link, Outlet, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
 
 export function Layout() {
   const { user, isLoggedIn, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const queryClient = useQueryClient();
 
   const handleLogout = () => {
+    queryClient.clear();
     logout();
     navigate('/login');
   };
 
+  const isActive = (path: string) => location.pathname === path;
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+    <div className="min-h-screen bg-gray-50 flex">
+      {/* 侧边导航栏 */}
+      <aside className="w-56 bg-white shadow-sm min-h-screen shrink-0 flex flex-col">
+        <div className="p-4">
           <Link to="/" className="text-xl font-bold text-green-600">商店管理</Link>
-          {isLoggedIn && (
-            <nav className="flex items-center gap-4">
-              <Link to="/" className="text-gray-600 hover:text-green-600">商品管理</Link>
-              <Link to="/orders" className="text-gray-600 hover:text-green-600">订单管理</Link>
-              <span className="text-sm text-gray-500">{user?.name}</span>
-              <button onClick={handleLogout} className="text-sm text-red-500 hover:text-red-700">退出</button>
-            </nav>
-          )}
         </div>
-      </header>
-      <main className="max-w-6xl mx-auto px-4 py-6">
-        <Outlet />
-      </main>
+        {isLoggedIn && (
+          <nav className="mt-4 flex-1">
+            <Link
+              to="/"
+              className={`block px-4 py-2.5 text-sm ${
+                isActive('/') ? 'bg-green-50 text-green-600 font-medium border-r-2 border-green-600' : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              📊 仪表盘
+            </Link>
+            <Link
+              to="/products"
+              className={`block px-4 py-2.5 text-sm ${
+                isActive('/products') || location.pathname.startsWith('/products/')
+                  ? 'bg-green-50 text-green-600 font-medium border-r-2 border-green-600'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              📦 商品管理
+            </Link>
+            <Link
+              to="/orders"
+              className={`block px-4 py-2.5 text-sm ${
+                isActive('/orders') || location.pathname.startsWith('/orders/')
+                  ? 'bg-green-50 text-green-600 font-medium border-r-2 border-green-600'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              📋 订单管理
+            </Link>
+            <Link
+              to="/profile"
+              className={`block px-4 py-2.5 text-sm ${
+                isActive('/profile')
+                  ? 'bg-green-50 text-green-600 font-medium border-r-2 border-green-600'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              👤 个人中心
+            </Link>
+          </nav>
+        )}
+        {/* 底部用户信息与退出 — 使用 mt-auto 推至底部，不会与导航项重叠 */}
+        {isLoggedIn && (
+          <div className="p-4 border-t mt-auto">
+            <div className="text-sm text-gray-500 mb-2">{user?.name}</div>
+            <button onClick={handleLogout} className="text-sm text-red-500 hover:text-red-700">
+              退出
+            </button>
+          </div>
+        )}
+      </aside>
+      {/* 右侧内容区 */}
+      <div className="flex-1 flex flex-col min-h-screen">
+        <header className="bg-white shadow-sm h-16 flex items-center justify-end px-6">
+          <span className="text-sm text-gray-500">欢迎，{user?.name}</span>
+        </header>
+        <main className="flex-1 p-6">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }
@@ -3175,6 +3380,20 @@ export function OrderDetail() {
 }
 ```
 
+`frontend-store/src/pages/Dashboard.tsx`:
+```typescript
+export function Dashboard() {
+  return <div>仪表盘</div>;
+}
+```
+
+`frontend-store/src/pages/Profile.tsx`:
+```typescript
+export function Profile() {
+  return <div>管理员个人中心</div>;
+}
+```
+
 `frontend-store/src/pages/Login.tsx`:
 ```typescript
 export function Login() {
@@ -3195,10 +3414,12 @@ export function Register() {
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { Dashboard } from './pages/Dashboard';
 import { ProductManage } from './pages/ProductManage';
 import { ProductForm } from './pages/ProductForm';
 import { Orders } from './pages/Orders';
 import { OrderDetail } from './pages/OrderDetail';
+import { Profile } from './pages/Profile';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 
@@ -3209,11 +3430,13 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-          <Route index element={<ProductManage />} />
+          <Route index element={<Dashboard />} />
+          <Route path="products" element={<ProductManage />} />
           <Route path="products/new" element={<ProductForm />} />
           <Route path="products/:id/edit" element={<ProductForm />} />
           <Route path="orders" element={<Orders />} />
           <Route path="orders/:id" element={<OrderDetail />} />
+          <Route path="profile" element={<Profile />} />
         </Route>
       </Routes>
     </BrowserRouter>
