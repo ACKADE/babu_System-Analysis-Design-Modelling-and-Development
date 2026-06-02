@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Skill(superpowers:writing-plans)"
+      "Skill(superpowers:writing-plans)",
+      "Bash(git *)",
+      "Skill(grill-me)"
     ]
   }
 }

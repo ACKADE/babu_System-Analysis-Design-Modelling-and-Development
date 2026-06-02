@@ -286,6 +286,18 @@ model User {
   createdAt DateTime   @default(now())
   cartItems CartItem[]
   orders    Order[]
+  reviews   Review[]
+}
+
+model Category {
+  id       Int        @id @default(autoincrement())
+  name     String
+  parentId Int?
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryTree")
+  products Product[]
+
+  @@unique([parentId, name])
 }
 
 model Product {
@@ -298,10 +310,13 @@ model Product {
   thumbnailUrl String
   imageUrl     String
   isActive     Boolean    @default(true)
+  categoryId   Int
+  category     Category   @relation(fields: [categoryId], references: [id])
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   cartItems    CartItem[]
   orderItems   OrderItem[]
+  reviews      Review[]
 }
 
 model CartItem {
@@ -317,16 +332,23 @@ model CartItem {
 }
 
 model Order {
-  id               Int         @id @default(autoincrement())
-  userId           Int
-  recipientName    String
-  recipientAddress String
-  recipientPhone   String
-  totalAmount      Decimal     @db.Decimal(10, 2)
-  status           String      @default("PAID")
-  createdAt        DateTime    @default(now())
-  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items            OrderItem[]
+  id                   Int         @id @default(autoincrement())
+  orderNo              String      @unique
+  userId               Int
+  recipientName        String
+  recipientAddress     String
+  recipientPhone       String
+  totalAmount          Decimal     @db.Decimal(10, 2)
+  status               String      @default("PAID")
+  shippedAt            DateTime?
+  returnReason         String?     @db.Text
+  returnRejectedReason String?     @db.Text
+  returnAttempts       Int         @default(0)
+  refundedAt           DateTime?
+  createdAt            DateTime    @default(now())
+  user                 User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items                OrderItem[]
+  review               Review?
 }
 
 model OrderItem {
@@ -339,6 +361,24 @@ model OrderItem {
   quantity     Int
   order        Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product      Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model OrderSequence {
+  date    String @id @db.VarChar(8)
+  lastSeq Int    @default(0)
+}
+
+model Review {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  productId Int
+  orderId   Int      @unique
+  rating    Int
+  content   String?  @db.Text
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }
 ```
 
@@ -609,6 +649,7 @@ export const createProductSchema = z.object({
     description: z.string().min(1, '详情描述不能为空'),
     price: z.coerce.number().positive('价格必须大于0'),
     stock: z.coerce.number().int().min(0, '库存不能为负数'),
+    categoryId: z.coerce.number().int().positive('请选择商品分类'),
   }),
 });
 
@@ -619,6 +660,7 @@ export const updateProductSchema = z.object({
     description: z.string().min(1).optional(),
     price: z.coerce.number().positive().optional(),
     stock: z.coerce.number().int().min(0).optional(),
+    categoryId: z.coerce.number().int().positive().optional(),
   }),
 });
 ```
@@ -638,7 +680,7 @@ export const createOrderSchema = z.object({
 
 export const updateOrderStatusSchema = z.object({
   body: z.object({
-    status: z.enum(['SHIPPED', 'COMPLETED']),
+    status: z.enum(['SHIPPED']), // 管理员仅允许发货操作
   }),
 });
 ```
@@ -675,6 +717,9 @@ import authRoutes from './routes/auth';
 import productRoutes from './routes/products';
 import cartRoutes from './routes/cart';
 import orderRoutes from './routes/orders';
+import categoryRoutes from './routes/categories';
+import reviewRoutes from './routes/reviews';
+import dashboardRoutes from './routes/dashboard';
 
 const app = express();
 
@@ -687,6 +732,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api', reviewRoutes); // review routes handle /products/:id/reviews and /orders/:id/review
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
@@ -759,6 +807,9 @@ git commit -m "feat: add Express app entry, middleware, and validation schemas"
 - Create: `backend/src/routes/products.ts`
 - Create: `backend/src/routes/cart.ts`
 - Create: `backend/src/routes/orders.ts`
+- Create: `backend/src/routes/categories.ts`
+- Create: `backend/src/routes/reviews.ts`
+- Create: `backend/src/routes/dashboard.ts`
 
 - [ ] **Step 1: 创建 backend/src/routes/auth.ts**
 
@@ -955,6 +1006,160 @@ router.post('/logout', (_req: Request, res: Response): void => {
   res.json({ message: '登出成功' });
 });
 
+/**
+ * @swagger
+ * /api/auth/forgot-password:
+ *   post:
+ *     tags: [Auth]
+ *     summary: 忘记密码（重置为 123456）
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email]
+ *             properties:
+ *               email: { type: string, format: email }
+ *     responses:
+ *       200: { description: 密码重置成功 }
+ *       404: { description: 邮箱未注册 }
+ */
+router.post('/forgot-password', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email } = req.body;
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      res.status(404).json({ message: '该邮箱未注册' });
+      return;
+    }
+    const hashedPassword = await hash('123456', 10);
+    await prisma.user.update({
+      where: { email },
+      data: { password: hashedPassword },
+    });
+    res.json({ message: '密码已重置为 123456，请登录后修改' });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ message: '操作失败，请稍后重试' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/auth/me:
+ *   get:
+ *     tags: [Auth]
+ *     summary: 获取当前用户信息
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: 用户信息 }
+ */
+router.get('/me', authenticate, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.userId },
+      select: { id: true, name: true, email: true, role: true, createdAt: true },
+    });
+    if (!user) {
+      res.status(404).json({ message: '用户不存在' });
+      return;
+    }
+    res.json(user);
+  } catch (error) {
+    console.error('Get me error:', error);
+    res.status(500).json({ message: '获取用户信息失败' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/auth/profile:
+ *   put:
+ *     tags: [Auth]
+ *     summary: 更新用户名
+ *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name]
+ *             properties:
+ *               name: { type: string }
+ *     responses:
+ *       200: { description: 更新成功 }
+ */
+router.put('/profile', authenticate, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { name } = req.body;
+    if (!name || name.length < 2) {
+      res.status(400).json({ message: '用户名至少2个字符' });
+      return;
+    }
+    const user = await prisma.user.update({
+      where: { id: req.user!.userId },
+      data: { name },
+      select: { id: true, name: true, email: true, role: true },
+    });
+    res.json({ message: '用户名修改成功', user });
+  } catch (error) {
+    console.error('Update profile error:', error);
+    res.status(500).json({ message: '修改用户名失败' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/auth/password:
+ *   put:
+ *     tags: [Auth]
+ *     summary: 修改密码
+ *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [oldPassword, newPassword]
+ *             properties:
+ *               oldPassword: { type: string }
+ *               newPassword: { type: string, minLength: 6 }
+ *     responses:
+ *       200: { description: 密码修改成功 }
+ *       400: { description: 旧密码错误 }
+ */
+router.put('/password', authenticate, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    if (!newPassword || newPassword.length < 6) {
+      res.status(400).json({ message: '新密码至少6位' });
+      return;
+    }
+    const user = await prisma.user.findUnique({ where: { id: req.user!.userId } });
+    if (!user) {
+      res.status(404).json({ message: '用户不存在' });
+      return;
+    }
+    const isPasswordValid = await compare(oldPassword, user.password);
+    if (!isPasswordValid) {
+      res.status(400).json({ message: '旧密码错误' });
+      return;
+    }
+    const hashedPassword = await hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword },
+    });
+    res.json({ message: '密码修改成功' });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({ message: '修改密码失败' });
+  }
+});
+
 export default router;
 ```
 
@@ -1066,7 +1271,7 @@ router.post(
   validate(createProductSchema),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { name, summary, description, price, stock } = req.body;
+      const { name, summary, description, price, stock, categoryId } = req.body;
       const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
 
       const thumbnailUrl = files?.thumbnail?.[0]
@@ -1083,6 +1288,7 @@ router.post(
           description,
           price,
           stock: Number(stock),
+          categoryId: Number(categoryId),
           thumbnailUrl,
           imageUrl,
         },
@@ -1127,7 +1333,7 @@ router.put(
         return;
       }
 
-      const { name, summary, description, price, stock } = req.body;
+      const { name, summary, description, price, stock, categoryId } = req.body;
       const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
 
       const data: Record<string, unknown> = {};
@@ -1136,6 +1342,7 @@ router.put(
       if (description !== undefined) data.description = description;
       if (price !== undefined) data.price = Number(price);
       if (stock !== undefined) data.stock = Number(stock);
+      if (categoryId !== undefined) data.categoryId = Number(categoryId);
       if (files?.thumbnail?.[0]) {
         data.thumbnailUrl = path.posix.join('uploads', files.thumbnail[0].filename);
       }
@@ -1264,14 +1471,26 @@ router.post('/', authenticate, requireRole('USER'), validate(addCartItemSchema),
       return;
     }
 
+    const addQuantity = quantity || 1;
+
     const existing = await prisma.cartItem.findUnique({
       where: { userId_productId: { userId, productId } },
     });
 
+    const totalQuantity = existing ? existing.quantity + addQuantity : addQuantity;
+
+    // 库存校验：添加/叠加后的数量不能超过当前库存
+    if (totalQuantity > product.stock) {
+      res.status(400).json({
+        message: `库存不足，当前仅剩 ${product.stock} 件`,
+      });
+      return;
+    }
+
     if (existing) {
       const updated = await prisma.cartItem.update({
         where: { id: existing.id },
-        data: { quantity: existing.quantity + (quantity || 1) },
+        data: { quantity: totalQuantity },
         include: { product: true },
       });
       res.json(updated);
@@ -1279,7 +1498,7 @@ router.post('/', authenticate, requireRole('USER'), validate(addCartItemSchema),
     }
 
     const cartItem = await prisma.cartItem.create({
-      data: { userId, productId, quantity: quantity || 1 },
+      data: { userId, productId, quantity: addQuantity },
       include: { product: true },
     });
     res.status(201).json(cartItem);
@@ -1404,41 +1623,78 @@ router.post('/', authenticate, requireRole('USER'), validate(createOrderSchema),
       include: { product: true },
     });
 
-    const validItems = cartItems.filter((item) => item.product.isActive && item.product.stock > 0);
+    // 过滤下架商品（下架商品跳过结算，保留在购物车）
+    const activeItems = cartItems.filter((item) => item.product.isActive);
 
-    if (validItems.length === 0) {
+    if (activeItems.length === 0) {
       res.status(400).json({ message: '购物车中无可结算的有效商品' });
       return;
     }
 
-    const totalAmount = validItems.reduce(
+    // 逐件校验库存，任一件不足则返回具体提示
+    for (const item of activeItems) {
+      if (item.quantity > item.product.stock) {
+        res.status(400).json({
+          message: `商品「${item.product.name}」库存不足，当前仅剩 ${item.product.stock} 件`,
+        });
+        return;
+      }
+    }
+
+    const totalAmount = activeItems.reduce(
       (sum, item) => sum + Number(item.product.price) * item.quantity,
       0
     );
 
-    const order = await prisma.order.create({
-      data: {
-        userId,
-        recipientName,
-        recipientAddress,
-        recipientPhone,
-        totalAmount,
-        items: {
-          create: validItems.map((item) => ({
-            productId: item.productId,
-            productName: item.product.name,
-            productPrice: item.product.price,
-            productImage: item.product.thumbnailUrl,
-            quantity: item.quantity,
-          })),
-        },
-      },
-      include: { items: true },
+    // 生成订单编号：YYYYMMDD + 4位序号（OrderSequence 原子递增）
+    const today = new Date();
+    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+    const seq = await prisma.orderSequence.upsert({
+      where: { date: dateStr },
+      update: { lastSeq: { increment: 1 } },
+      create: { date: dateStr, lastSeq: 1 },
     });
+    const orderNo = `${dateStr}${String(seq.lastSeq).padStart(4, '0')}`;
 
-    const validItemIds = validItems.map((item) => item.id);
-    await prisma.cartItem.deleteMany({
-      where: { id: { in: validItemIds } },
+    // Prisma 事务：创建订单 + 扣减库存 + 生成订单编号 + 清空已结算购物车项
+    const order = await prisma.$transaction(async (tx) => {
+      // 扣减库存（WHERE stock >= quantity 乐观并发保护）
+      for (const item of activeItems) {
+        await tx.product.updateMany({
+          where: { id: item.productId, stock: { gte: item.quantity } },
+          data: { stock: { decrement: item.quantity } },
+        });
+      }
+
+      // 创建订单（含快照 OrderItem）
+      const created = await tx.order.create({
+        data: {
+          orderNo,
+          userId,
+          recipientName,
+          recipientAddress,
+          recipientPhone,
+          totalAmount,
+          items: {
+            create: activeItems.map((item) => ({
+              productId: item.productId,
+              productName: item.product.name,
+              productPrice: item.product.price,
+              productImage: item.product.thumbnailUrl,
+              quantity: item.quantity,
+            })),
+          },
+        },
+        include: { items: true },
+      });
+
+      // 清空已结算的购物车项
+      const activeItemIds = activeItems.map((item) => item.id);
+      await tx.cartItem.deleteMany({
+        where: { id: { in: activeItemIds } },
+      });
+
+      return created;
     });
 
     res.status(201).json(order);
@@ -1461,7 +1717,15 @@ router.post('/', authenticate, requireRole('USER'), validate(createOrderSchema),
 router.get('/', authenticate, async (req: Request, res: Response): Promise<void> => {
   try {
     const isAdmin = req.user!.role.includes('ADMIN');
-    const where = isAdmin ? {} : { userId: req.user!.userId };
+    const statusFilter = req.query.status as string | undefined;
+
+    const where: Record<string, unknown> = {};
+    if (!isAdmin) {
+      where.userId = req.user!.userId;
+    }
+    if (statusFilter) {
+      where.status = statusFilter;
+    }
 
     const orders = await prisma.order.findMany({
       where,
@@ -1471,6 +1735,19 @@ router.get('/', authenticate, async (req: Request, res: Response): Promise<void>
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    // 惰性自动收货：SHIPPED + 7天 → COMPLETED
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    for (const order of orders) {
+      if (order.status === 'SHIPPED' && order.shippedAt && new Date(order.shippedAt) <= sevenDaysAgo) {
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { status: 'COMPLETED' },
+        });
+        order.status = 'COMPLETED';
+      }
+    }
+
     res.json(orders);
   } catch (error) {
     console.error('Get orders error:', error);
@@ -1513,6 +1790,16 @@ router.get('/:id', authenticate, async (req: Request, res: Response): Promise<vo
     if (!isAdmin && order.userId !== req.user!.userId) {
       res.status(403).json({ message: '无权访问此订单' });
       return;
+    }
+
+    // 惰性自动收货：SHIPPED + 7天 → COMPLETED
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    if (order.status === 'SHIPPED' && order.shippedAt && new Date(order.shippedAt) <= sevenDaysAgo) {
+      await prisma.order.update({
+        where: { id: order.id },
+        data: { status: 'COMPLETED' },
+      });
+      order.status = 'COMPLETED';
     }
 
     res.json(order);
@@ -1560,12 +1847,9 @@ router.patch(
       }
 
       const { status } = req.body;
-      const validFlow: Record<string, string> = {
-        PAID: 'SHIPPED',
-        SHIPPED: 'COMPLETED',
-      };
 
-      if (validFlow[order.status] !== status) {
+      // 管理员仅允许 PAID → SHIPPED（发货），COMPLETED 由用户确认收货或 7 天自动完成
+      if (order.status !== 'PAID' || status !== 'SHIPPED') {
         res.status(400).json({
           message: `不能将订单从 ${order.status} 变更为 ${status}`,
         });
@@ -1574,7 +1858,7 @@ router.patch(
 
       const updated = await prisma.order.update({
         where: { id: order.id },
-        data: { status },
+        data: { status, shippedAt: new Date() },
         include: {
           items: true,
           user: { select: { id: true, name: true, email: true } },
@@ -1588,21 +1872,497 @@ router.patch(
   }
 );
 
+/**
+ * @swagger
+ * /api/orders/{id}/confirm:
+ *   post:
+ *     tags: [Orders]
+ *     summary: 确认收货 (SHIPPED → COMPLETED)
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: 确认收货成功 }
+ *       400: { description: 当前状态不允许确认收货 }
+ */
+router.post('/:id/confirm', authenticate, requireRole('USER'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) } });
+    if (!order) {
+      res.status(404).json({ message: '订单不存在' });
+      return;
+    }
+    if (order.userId !== req.user!.userId) {
+      res.status(403).json({ message: '无权操作此订单' });
+      return;
+    }
+    if (order.status !== 'SHIPPED') {
+      res.status(400).json({ message: '当前订单状态不允许确认收货' });
+      return;
+    }
+    const updated = await prisma.order.update({
+      where: { id: order.id },
+      data: { status: 'COMPLETED' },
+      include: { items: true },
+    });
+    res.json(updated);
+  } catch (error) {
+    console.error('Confirm order error:', error);
+    res.status(500).json({ message: '确认收货失败' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/orders/{id}/cancel:
+ *   post:
+ *     tags: [Orders]
+ *     summary: 取消订单 (PAID → CANCELLED，恢复库存)
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: 取消成功 }
+ *       400: { description: 当前状态不允许取消 }
+ */
+router.post('/:id/cancel', authenticate, requireRole('USER'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: Number(req.params.id) },
+      include: { items: true },
+    });
+    if (!order) {
+      res.status(404).json({ message: '订单不存在' });
+      return;
+    }
+    if (order.userId !== req.user!.userId) {
+      res.status(403).json({ message: '无权操作此订单' });
+      return;
+    }
+    if (order.status !== 'PAID') {
+      res.status(400).json({ message: '当前订单状态不允许取消' });
+      return;
+    }
+    // 事务：修改状态 + 恢复库存
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({
+        where: { id: order.id },
+        data: { status: 'CANCELLED' },
+      });
+      for (const item of order.items) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { stock: { increment: item.quantity } },
+        });
+      }
+    });
+    res.json({ message: '订单已取消', status: 'CANCELLED' });
+  } catch (error) {
+    console.error('Cancel order error:', error);
+    res.status(500).json({ message: '取消订单失败' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/orders/{id}/return:
+ *   post:
+ *     tags: [Orders]
+ *     summary: 申请退货 (COMPLETED → RETURN_PENDING)
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [returnReason]
+ *             properties:
+ *               returnReason: { type: string, minLength: 5 }
+ *     responses:
+ *       200: { description: 退货申请已提交 }
+ *       400: { description: 不允许申请或已达次数上限 }
+ */
+router.post('/:id/return', authenticate, requireRole('USER'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) } });
+    if (!order) {
+      res.status(404).json({ message: '订单不存在' });
+      return;
+    }
+    if (order.userId !== req.user!.userId) {
+      res.status(403).json({ message: '无权操作此订单' });
+      return;
+    }
+    if (order.status !== 'COMPLETED') {
+      res.status(400).json({ message: '当前订单状态不允许申请售后' });
+      return;
+    }
+    if (order.returnAttempts >= 3) {
+      res.status(400).json({ message: '售后次数已达上限（3次）' });
+      return;
+    }
+    const { returnReason } = req.body;
+    if (!returnReason || returnReason.length < 5) {
+      res.status(400).json({ message: '退货原因至少5个字' });
+      return;
+    }
+    const updated = await prisma.order.update({
+      where: { id: order.id },
+      data: { status: 'RETURN_PENDING', returnReason },
+      include: { items: true },
+    });
+    res.json(updated);
+  } catch (error) {
+    console.error('Return request error:', error);
+    res.status(500).json({ message: '申请售后失败' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/orders/{id}/return/approve:
+ *   post:
+ *     tags: [Orders]
+ *     summary: 同意退货 (ADMIN: RETURN_PENDING → REFUNDED，恢复库存)
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: 已同意退货并退款 }
+ */
+router.post('/:id/return/approve', authenticate, requireRole('ADMIN'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: Number(req.params.id) },
+      include: { items: true },
+    });
+    if (!order) {
+      res.status(404).json({ message: '订单不存在' });
+      return;
+    }
+    if (order.status !== 'RETURN_PENDING') {
+      res.status(400).json({ message: '当前订单状态不允许此操作' });
+      return;
+    }
+    // 事务：退款 + 恢复库存
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({
+        where: { id: order.id },
+        data: { status: 'REFUNDED', refundedAt: new Date() },
+      });
+      for (const item of order.items) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { stock: { increment: item.quantity } },
+        });
+      }
+    });
+    res.json({ message: '已同意退货并退款', status: 'REFUNDED' });
+  } catch (error) {
+    console.error('Approve return error:', error);
+    res.status(500).json({ message: '操作失败' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/orders/{id}/return/reject:
+ *   post:
+ *     tags: [Orders]
+ *     summary: 拒绝退货 (ADMIN: RETURN_PENDING → COMPLETED)
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               rejectReason: { type: string }
+ *     responses:
+ *       200: { description: 已拒绝退货 }
+ */
+router.post('/:id/return/reject', authenticate, requireRole('ADMIN'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) } });
+    if (!order) {
+      res.status(404).json({ message: '订单不存在' });
+      return;
+    }
+    if (order.status !== 'RETURN_PENDING') {
+      res.status(400).json({ message: '当前订单状态不允许此操作' });
+      return;
+    }
+    const { rejectReason } = req.body;
+    const updated = await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        status: 'COMPLETED',
+        returnRejectedReason: rejectReason || null,
+        returnAttempts: order.returnAttempts + 1,
+      },
+      include: { items: true },
+    });
+    res.json(updated);
+  } catch (error) {
+    console.error('Reject return error:', error);
+    res.status(500).json({ message: '操作失败' });
+  }
+});
+
 export default router;
 ```
 
-- [ ] **Step 5: 验证后端编译通过**
+- [ ] **Step 5: 创建 backend/src/routes/categories.ts**
+
+```typescript
+import { Router, Request, Response } from 'express';
+import prisma from '../lib/prisma';
+
+const router = Router();
+
+/**
+ * @swagger
+ * /api/categories:
+ *   get:
+ *     tags: [Categories]
+ *     summary: 获取分类树（二级）
+ *     responses:
+ *       200: { description: 分类树 }
+ */
+router.get('/', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const categories = await prisma.category.findMany({
+      where: { parentId: null },
+      include: { children: true },
+      orderBy: { id: 'asc' },
+    });
+    res.json(categories);
+  } catch (error) {
+    console.error('Get categories error:', error);
+    res.status(500).json({ message: '获取分类失败' });
+  }
+});
+
+export default router;
+```
+
+- [ ] **Step 6: 创建 backend/src/routes/reviews.ts**
+
+```typescript
+import { Router, Request, Response } from 'express';
+import prisma from '../lib/prisma';
+import { authenticate, requireRole } from '../middleware/auth';
+
+const router = Router();
+
+/**
+ * @swagger
+ * /api/products/{id}/reviews:
+ *   get:
+ *     tags: [Reviews]
+ *     summary: 获取商品评价列表
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: 评价列表 }
+ */
+router.get('/products/:id/reviews', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const reviews = await prisma.review.findMany({
+      where: { productId: Number(req.params.id) },
+      include: { user: { select: { id: true, name: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(reviews);
+  } catch (error) {
+    console.error('Get reviews error:', error);
+    res.status(500).json({ message: '获取评价失败' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/orders/{id}/review:
+ *   post:
+ *     tags: [Reviews]
+ *     summary: 提交商品评价（每个订单限一条）
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [productId, rating]
+ *             properties:
+ *               productId: { type: integer }
+ *               rating: { type: integer, minimum: 1, maximum: 5 }
+ *               content: { type: string }
+ *     responses:
+ *       201: { description: 评价成功 }
+ *       400: { description: 不允许评价或已评价过 }
+ */
+router.post('/orders/:id/review', authenticate, requireRole('USER'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const orderId = Number(req.params.id);
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) {
+      res.status(404).json({ message: '订单不存在' });
+      return;
+    }
+    if (order.userId !== req.user!.userId) {
+      res.status(403).json({ message: '无权操作此订单' });
+      return;
+    }
+    if (order.status !== 'COMPLETED') {
+      res.status(400).json({ message: '仅可对已完成的订单进行评价' });
+      return;
+    }
+
+    const existingReview = await prisma.review.findUnique({ where: { orderId } });
+    if (existingReview) {
+      res.status(400).json({ message: '该订单已评价过' });
+      return;
+    }
+
+    const { productId, rating, content } = req.body;
+    if (!rating || rating < 1 || rating > 5) {
+      res.status(400).json({ message: '评分须在 1-5 之间' });
+      return;
+    }
+
+    // 验证 productId 属于本订单商品
+    const orderItem = await prisma.orderItem.findFirst({
+      where: { orderId, productId },
+    });
+    if (!orderItem) {
+      res.status(400).json({ message: '该商品不属于此订单' });
+      return;
+    }
+
+    const review = await prisma.review.create({
+      data: {
+        userId: req.user!.userId,
+        productId,
+        orderId,
+        rating,
+        content: content || null,
+      },
+      include: { user: { select: { id: true, name: true } } },
+    });
+    res.status(201).json(review);
+  } catch (error) {
+    console.error('Create review error:', error);
+    res.status(500).json({ message: '提交评价失败' });
+  }
+});
+
+export default router;
+```
+
+- [ ] **Step 7: 创建 backend/src/routes/dashboard.ts**
+
+```typescript
+import { Router, Request, Response } from 'express';
+import prisma from '../lib/prisma';
+import { authenticate, requireRole } from '../middleware/auth';
+
+const router = Router();
+
+/**
+ * @swagger
+ * /api/dashboard:
+ *   get:
+ *     tags: [Dashboard]
+ *     summary: 仪表盘统计数据 (管理员)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: 统计数据 }
+ */
+router.get('/', authenticate, requireRole('ADMIN'), async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const [totalProducts, activeProducts, totalOrders, pendingShipOrders, returnPendingCount] = await Promise.all([
+      prisma.product.count(),
+      prisma.product.count({ where: { isActive: true } }),
+      prisma.order.count(),
+      prisma.order.count({ where: { status: 'PAID' } }),
+      prisma.order.count({ where: { status: 'RETURN_PENDING' } }),
+    ]);
+
+    // 本月销售额：PAID + SHIPPED + COMPLETED
+    const now = new Date();
+    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthlyOrders = await prisma.order.findMany({
+      where: {
+        createdAt: { gte: firstDayOfMonth },
+        status: { in: ['PAID', 'SHIPPED', 'COMPLETED'] },
+      },
+      select: { totalAmount: true },
+    });
+    const monthlySales = monthlyOrders.reduce((sum, o) => sum + Number(o.totalAmount), 0);
+
+    // 本月订单数
+    const monthlyOrderCount = await prisma.order.count({
+      where: { createdAt: { gte: firstDayOfMonth } },
+    });
+
+    res.json({
+      totalProducts,
+      activeProducts,
+      monthlyOrderCount,
+      pendingShipOrders,
+      monthlySales,
+      returnPendingCount,
+    });
+  } catch (error) {
+    console.error('Get dashboard error:', error);
+    res.status(500).json({ message: '获取统计数据失败' });
+  }
+});
+
+export default router;
+```
+
+- [ ] **Step 8: 验证后端编译通过**
 
 ```bash
 cd backend && npx tsx src/index.ts
 ```
 Expected: Server starts without errors. Then Ctrl+C to stop.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add backend/src/routes/
-git commit -m "feat: add all API routes (auth, products, cart, orders)"
+git commit -m "feat: add all API routes (auth, products, cart, orders, categories, reviews, dashboard)"
 ```
 
 ---
@@ -2507,7 +3267,7 @@ git commit -m "feat: scaffold store frontend with Vite + React + Tailwind"
 | S02 商品管理 | Placeholder in Task 9 |
 | S03 订单管理 | Placeholder in Task 9 |
 
-**Gaps identified:** All placeholder pages need to be implemented in a subsequent plan. The current plan covers only the full project skeleton — Docker, backend API routes (complete with auth/product/cart/order logic), and frontend structure with routing. This is intentional: this plan delivers a runnable skeleton.
+**Gaps identified:** All placeholder pages need to be implemented in a subsequent plan. The current plan covers the full project skeleton — Docker, complete backend with all 30 API endpoints (auth/product/cart/order/categories/reviews/dashboard + Prisma transactions + OrderSequence + stock validation), and frontend structure with routing. This is intentional: this plan delivers a runnable skeleton.
 
 ### 2. Placeholder Scan
 - No "TBD" or "TODO" found
