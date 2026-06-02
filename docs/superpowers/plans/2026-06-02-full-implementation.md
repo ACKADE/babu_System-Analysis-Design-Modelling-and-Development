@@ -21,11 +21,11 @@
 | U03 | 购物车管理 | GET/POST/PUT/DELETE /cart | Cart | — |
 | U04 | 结算+模拟支付 | POST /orders | Checkout, PaymentSuccess | — |
 | U05 | 历史订单 | GET /orders, GET /orders/:id, POST /orders/:id/confirm | Orders, OrderDetail | — |
-| U06 | 注册登录 | POST /auth/register, /login, /refresh, /logout, /forgot-password, GET /me | Login, Register, Profile | — |
+| U06 | 注册登录 | POST /auth/register, /login, /refresh, /logout, /forgot-password, /reset-password, GET /me | Login, Register, Profile | — |
 | U07 | 订单取消+售后 | POST /orders/:id/cancel, /return | OrderDetail | — |
 | U08 | 个人中心 | PUT /auth/profile, /password | Profile | — |
 | U09 | 商品评价 | POST /orders/:id/review, GET /products/:id/reviews | OrderDetail, ProductDetail | — |
-| S01 | 商店端注册登录 | 同 U06 API | — | Login, Register |
+| S01 | 商店端登录 | POST /auth/login, /refresh, /logout, GET /me | — | Login |
 | S02 | 商品管理 | POST/PUT/PATCH /products, GET /categories | — | ProductManage, ProductForm |
 | S03 | 订单管理+退货审批 | PATCH /orders/:id/status, /return/approve, /return/reject | — | Orders, OrderDetail |
 | S04 | 仪表盘 | GET /dashboard | — | Dashboard |

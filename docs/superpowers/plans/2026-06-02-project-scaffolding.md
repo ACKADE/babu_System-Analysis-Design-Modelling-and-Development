@@ -277,16 +277,32 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum OrderStatus {
+  PAID
+  SHIPPED
+  COMPLETED
+  CANCELLED
+  RETURN_PENDING
+  REFUNDED
+}
+
 model User {
-  id        Int        @id @default(autoincrement())
-  name      String
-  email     String     @unique
-  password  String
-  role      String     @default("USER")
-  createdAt DateTime   @default(now())
-  cartItems CartItem[]
-  orders    Order[]
-  reviews   Review[]
+  id                  Int                   @id @default(autoincrement())
+  name                String
+  email               String                @unique
+  password            String
+  role                UserRole              @default(USER)
+  createdAt           DateTime              @default(now())
+  cartItems           CartItem[]
+  orders              Order[]
+  reviews             Review[]
+  refreshTokens       RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
 }
 
 model Category {
@@ -339,7 +355,7 @@ model Order {
   recipientAddress     String
   recipientPhone       String
   totalAmount          Decimal     @db.Decimal(10, 2)
-  status               String      @default("PAID")
+  status               OrderStatus @default(PAID)
   shippedAt            DateTime?
   returnReason         String?     @db.Text
   returnRejectedReason String?     @db.Text
@@ -348,7 +364,7 @@ model Order {
   createdAt            DateTime    @default(now())
   user                 User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   items                OrderItem[]
-  review               Review?
+  reviews              Review[]
 }
 
 model OrderItem {
@@ -360,7 +376,7 @@ model OrderItem {
   productImage String
   quantity     Int
   order        Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product      Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product      Product @relation(fields: [productId], references: [id], onDelete: Restrict)
 }
 
 model OrderSequence {
@@ -368,17 +384,43 @@ model OrderSequence {
   lastSeq Int    @default(0)
 }
 
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  tokenHash String   @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
 model Review {
   id        Int      @id @default(autoincrement())
   userId    Int
   productId Int
-  orderId   Int      @unique
+  orderId   Int
   rating    Int
   content   String?  @db.Text
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, productId])
 }
 ```
 
@@ -625,7 +667,6 @@ export const registerSchema = z.object({
     name: z.string().min(2, '用户名至少2个字符').max(50, '用户名最多50个字符'),
     email: z.string().email('邮箱格式不正确'),
     password: z.string().min(6, '密码至少6位'),
-    role: z.enum(['USER', 'ADMIN']),
   }),
 });
 
@@ -633,6 +674,20 @@ export const loginSchema = z.object({
   body: z.object({
     email: z.string().email('邮箱格式不正确'),
     password: z.string().min(1, '请输入密码'),
+  }),
+});
+
+export const forgotPasswordSchema = z.object({
+  body: z.object({
+    email: z.string().email('邮箱格式不正确'),
+  }),
+});
+
+export const resetPasswordSchema = z.object({
+  body: z.object({
+    email: z.string().email('邮箱格式不正确'),
+    resetToken: z.string().min(6, '重置令牌无效'),
+    newPassword: z.string().min(6, '密码至少6位'),
   }),
 });
 ```
@@ -815,11 +870,12 @@ git commit -m "feat: add Express app entry, middleware, and validation schemas"
 
 ```typescript
 import { Router, Request, Response } from 'express';
+import { createHash, randomBytes } from 'crypto';
 import { hash, compare } from 'bcryptjs';
 import prisma from '../lib/prisma';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../lib/jwt';
 import { validate } from '../middleware/validate';
-import { registerSchema, loginSchema } from '../schemas/auth.schema';
+import { registerSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } from '../schemas/auth.schema';
 
 const router = Router();
 
@@ -835,62 +891,46 @@ const router = Router();
  *         application/json:
  *           schema:
  *             type: object
- *             required: [name, email, password, role]
+ *             required: [name, email, password]
  *             properties:
  *               name: { type: string }
  *               email: { type: string, format: email }
  *               password: { type: string, minLength: 6 }
- *               role: { type: string, enum: [USER, ADMIN] }
  *     responses:
  *       201: { description: 注册成功 }
  *       400: { description: 参数错误或邮箱已注册 }
  */
 router.post('/register', validate(registerSchema), async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password } = req.body;
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
-
     if (existingUser) {
-      const existingRoles = existingUser.role.split(',').map((r: string) => r.trim());
-      if (existingRoles.includes(role)) {
-        res.status(400).json({ message: '该账号已在此端注册过，请直接登录' });
-        return;
-      }
-      const isPasswordValid = await compare(password, existingUser.password);
-      if (!isPasswordValid) {
-        res.status(400).json({ message: '该邮箱已注册，密码错误' });
-        return;
-      }
-      const mergedRoles = [...new Set([...existingRoles, role])].join(',');
-      const updatedUser = await prisma.user.update({
-        where: { email },
-        data: { role: mergedRoles },
-      });
-      const tokenPayload = { userId: updatedUser.id, email: updatedUser.email, role: mergedRoles };
-      const accessToken = signAccessToken(tokenPayload);
-      const refreshToken = signRefreshToken(tokenPayload);
-      res.status(200).json({
-        message: '角色追加成功',
-        user: { id: updatedUser.id, name: updatedUser.name, email: updatedUser.email, role: mergedRoles },
-        accessToken,
-        refreshToken,
-      });
+      res.status(400).json({ message: '该邮箱已注册，请直接登录' });
       return;
     }
 
     const hashedPassword = await hash(password, 10);
     const user = await prisma.user.create({
-      data: { name, email, password: hashedPassword, role },
+      data: { name, email, password: hashedPassword, role: 'USER' },
     });
 
-    const tokenPayload = { userId: user.id, email: user.email, role };
+    const tokenPayload = { userId: user.id, email: user.email, role: user.role };
     const accessToken = signAccessToken(tokenPayload);
     const refreshToken = signRefreshToken(tokenPayload);
+    const refreshTokenHash = createHash('sha256').update(refreshToken).digest('hex');
+
+    await prisma.refreshToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: refreshTokenHash,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    });
 
     res.status(201).json({
       message: '注册成功',
-      user: { id: user.id, name: user.name, email: user.email, role },
+      user: { id: user.id, name: user.name, email: user.email, role: user.role },
       accessToken,
       refreshToken,
     });
@@ -936,9 +976,23 @@ router.post('/login', validate(loginSchema), async (req: Request, res: Response)
       return;
     }
 
+    await prisma.refreshToken.updateMany({
+      where: { userId: user.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+
     const tokenPayload = { userId: user.id, email: user.email, role: user.role };
     const accessToken = signAccessToken(tokenPayload);
     const refreshToken = signRefreshToken(tokenPayload);
+    const refreshTokenHash = createHash('sha256').update(refreshToken).digest('hex');
+
+    await prisma.refreshToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: refreshTokenHash,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    });
 
     res.json({
       message: '登录成功',
@@ -978,15 +1032,35 @@ router.post('/refresh', async (req: Request, res: Response): Promise<void> => {
       res.status(400).json({ message: '缺少刷新令牌' });
       return;
     }
+    const refreshTokenHash = createHash('sha256').update(refreshToken).digest('hex');
+    const storedToken = await prisma.refreshToken.findUnique({ where: { tokenHash: refreshTokenHash } });
+    if (!storedToken || storedToken.revokedAt || storedToken.expiresAt < new Date()) {
+      res.status(401).json({ message: '刷新令牌无效或已过期' });
+      return;
+    }
     const payload = verifyRefreshToken(refreshToken);
     const user = await prisma.user.findUnique({ where: { id: payload.userId } });
-    if (!user) {
+    if (!user || storedToken.userId !== user.id) {
       res.status(401).json({ message: '用户不存在' });
       return;
     }
     const tokenPayload = { userId: user.id, email: user.email, role: user.role };
     const newAccessToken = signAccessToken(tokenPayload);
     const newRefreshToken = signRefreshToken(tokenPayload);
+    const newRefreshTokenHash = createHash('sha256').update(newRefreshToken).digest('hex');
+
+    await prisma.refreshToken.update({
+      where: { id: storedToken.id },
+      data: { revokedAt: new Date() },
+    });
+    await prisma.refreshToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: newRefreshTokenHash,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    });
+
     res.json({ accessToken: newAccessToken, refreshToken: newRefreshToken });
   } catch {
     res.status(401).json({ message: '刷新令牌无效或已过期' });
@@ -999,10 +1073,27 @@ router.post('/refresh', async (req: Request, res: Response): Promise<void> => {
  *   post:
  *     tags: [Auth]
  *     summary: 登出
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [refreshToken]
+ *             properties:
+ *               refreshToken: { type: string }
  *     responses:
  *       200: { description: 登出成功 }
  */
-router.post('/logout', (_req: Request, res: Response): void => {
+router.post('/logout', async (req: Request, res: Response): Promise<void> => {
+  const { refreshToken } = req.body;
+  if (refreshToken) {
+    const refreshTokenHash = createHash('sha256').update(refreshToken).digest('hex');
+    await prisma.refreshToken.updateMany({
+      where: { tokenHash: refreshTokenHash, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
   res.json({ message: '登出成功' });
 });
 
@@ -1011,7 +1102,7 @@ router.post('/logout', (_req: Request, res: Response): void => {
  * /api/auth/forgot-password:
  *   post:
  *     tags: [Auth]
- *     summary: 忘记密码（重置为 123456）
+ *     summary: 申请重置令牌
  *     requestBody:
  *       required: true
  *       content:
@@ -1022,10 +1113,10 @@ router.post('/logout', (_req: Request, res: Response): void => {
  *             properties:
  *               email: { type: string, format: email }
  *     responses:
- *       200: { description: 密码重置成功 }
+ *       200: { description: 重置令牌已生成 }
  *       404: { description: 邮箱未注册 }
  */
-router.post('/forgot-password', async (req: Request, res: Response): Promise<void> => {
+router.post('/forgot-password', validate(forgotPasswordSchema), async (req: Request, res: Response): Promise<void> => {
   try {
     const { email } = req.body;
     const user = await prisma.user.findUnique({ where: { email } });
@@ -1033,14 +1124,76 @@ router.post('/forgot-password', async (req: Request, res: Response): Promise<voi
       res.status(404).json({ message: '该邮箱未注册' });
       return;
     }
-    const hashedPassword = await hash('123456', 10);
-    await prisma.user.update({
-      where: { email },
-      data: { password: hashedPassword },
+    const resetToken = randomBytes(24).toString('hex');
+    const tokenHash = createHash('sha256').update(resetToken).digest('hex');
+    await prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash,
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+      },
     });
-    res.json({ message: '密码已重置为 123456，请登录后修改' });
+    res.json({ message: '重置令牌已生成', resetToken });
   } catch (error) {
     console.error('Forgot password error:', error);
+    res.status(500).json({ message: '操作失败，请稍后重试' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/auth/reset-password:
+ *   post:
+ *     tags: [Auth]
+ *     summary: 使用重置令牌修改密码
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, resetToken, newPassword]
+ *             properties:
+ *               email: { type: string, format: email }
+ *               resetToken: { type: string }
+ *               newPassword: { type: string, minLength: 6 }
+ *     responses:
+ *       200: { description: 密码重置成功 }
+ *       400: { description: 重置令牌无效或已过期 }
+ */
+router.post('/reset-password', validate(resetPasswordSchema), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email, resetToken, newPassword } = req.body;
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      res.status(404).json({ message: '该邮箱未注册' });
+      return;
+    }
+    const tokenHash = createHash('sha256').update(resetToken).digest('hex');
+    const record = await prisma.passwordResetToken.findFirst({
+      where: {
+        userId: user.id,
+        tokenHash,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+    });
+    if (!record) {
+      res.status(400).json({ message: '重置令牌无效或已过期' });
+      return;
+    }
+    const hashedPassword = await hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword },
+    });
+    await prisma.passwordResetToken.update({
+      where: { id: record.id },
+      data: { usedAt: new Date() },
+    });
+    res.json({ message: '密码重置成功' });
+  } catch (error) {
+    console.error('Reset password error:', error);
     res.status(500).json({ message: '操作失败，请稍后重试' });
   }
 });
@@ -1731,7 +1884,7 @@ router.post('/', authenticate, requireRole('USER'), validate(createOrderSchema),
  */
 router.get('/', authenticate, async (req: Request, res: Response): Promise<void> => {
   try {
-    const isAdmin = req.user!.role.includes('ADMIN');
+    const isAdmin = req.user!.role === 'ADMIN';
     const statusFilter = req.query.status as string | undefined;
 
     const where: Record<string, unknown> = {};
@@ -1802,7 +1955,7 @@ router.get('/:id', authenticate, async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    const isAdmin = req.user!.role.includes('ADMIN');
+    const isAdmin = req.user!.role === 'ADMIN';
     if (!isAdmin && order.userId !== req.user!.userId) {
       res.status(403).json({ message: '无权访问此订单' });
       return;
@@ -2224,7 +2377,7 @@ router.get('/products/:id/reviews', async (req: Request, res: Response): Promise
  * /api/orders/{id}/review:
  *   post:
  *     tags: [Reviews]
- *     summary: 提交商品评价（每个订单限一条）
+ *     summary: 提交商品评价（订单商品限一条）
  *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - in: path
@@ -2538,7 +2691,6 @@ interface RegisterData {
   name: string;
   email: string;
   password: string;
-  role: 'USER' | 'ADMIN';
 }
 
 interface LoginData {
@@ -2550,7 +2702,7 @@ export const authApi = {
   register: (data: RegisterData) => apiClient.post('/auth/register', data),
   login: (data: LoginData) => apiClient.post('/auth/login', data),
   refresh: (refreshToken: string) => apiClient.post('/auth/refresh', { refreshToken }),
-  logout: () => apiClient.post('/auth/logout'),
+  logout: (refreshToken: string) => apiClient.post('/auth/logout', { refreshToken }),
 };
 ```
 
@@ -2604,6 +2756,7 @@ export const ordersApi = {
 
 ```typescript
 import { useState, useEffect, useCallback } from 'react';
+import { authApi } from '../api/auth';
 
 interface User {
   id: number;
@@ -2635,7 +2788,11 @@ export function useAuth() {
     setUser(userData);
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    const refreshToken = sessionStorage.getItem('refreshToken');
+    if (refreshToken) {
+      await authApi.logout(refreshToken);
+    }
     sessionStorage.clear();
     setUser(null);
   }, []);
@@ -2971,6 +3128,7 @@ export default apiClient;
 Create `frontend-store/src/hooks/useAuth.ts` (same pattern, check ADMIN role):
 ```typescript
 import { useState, useEffect, useCallback } from 'react';
+import { authApi } from '../api/auth';
 
 interface User {
   id: number;
@@ -2988,7 +3146,7 @@ export function useAuth() {
     if (stored) {
       try {
         const parsed = JSON.parse(stored) as User;
-        if (!parsed.role.includes('ADMIN')) {
+        if (parsed.role !== 'ADMIN') {
           sessionStorage.clear();
           setUser(null);
         } else {
@@ -3002,7 +3160,7 @@ export function useAuth() {
   }, []);
 
   const login = useCallback((userData: User, accessToken: string, refreshToken: string) => {
-    if (!userData.role.includes('ADMIN')) return false;
+    if (userData.role !== 'ADMIN') return false;
     sessionStorage.setItem('accessToken', accessToken);
     sessionStorage.setItem('refreshToken', refreshToken);
     sessionStorage.setItem('user', JSON.stringify(userData));
@@ -3010,7 +3168,11 @@ export function useAuth() {
     return true;
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    const refreshToken = sessionStorage.getItem('refreshToken');
+    if (refreshToken) {
+      await authApi.logout(refreshToken);
+    }
     sessionStorage.clear();
     setUser(null);
   }, []);
@@ -3023,23 +3185,15 @@ Create `frontend-store/src/api/auth.ts`:
 ```typescript
 import apiClient from './client';
 
-interface RegisterData {
-  name: string;
-  email: string;
-  password: string;
-  role: 'USER' | 'ADMIN';
-}
-
 interface LoginData {
   email: string;
   password: string;
 }
 
 export const authApi = {
-  register: (data: RegisterData) => apiClient.post('/auth/register', data),
   login: (data: LoginData) => apiClient.post('/auth/login', data),
   refresh: (refreshToken: string) => apiClient.post('/auth/refresh', { refreshToken }),
-  logout: () => apiClient.post('/auth/logout'),
+  logout: (refreshToken: string) => apiClient.post('/auth/logout', { refreshToken }),
 };
 ```
 
@@ -3182,13 +3336,6 @@ export function Login() {
 }
 ```
 
-`frontend-store/src/pages/Register.tsx`:
-```typescript
-export function Register() {
-  return <div>商店端注册</div>;
-}
-```
-
 - [ ] **Step 6: 设置路由 `frontend-store/src/App.tsx`**
 
 ```typescript
@@ -3200,14 +3347,12 @@ import { ProductForm } from './pages/ProductForm';
 import { Orders } from './pages/Orders';
 import { OrderDetail } from './pages/OrderDetail';
 import { Login } from './pages/Login';
-import { Register } from './pages/Register';
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={<ProductManage />} />
           <Route path="products/new" element={<ProductForm />} />

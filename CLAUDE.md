@@ -54,7 +54,7 @@ project-root/
 │       ├── hooks/           # useAuth
 │       └── pages/           # ProductList, ProductDetail, Cart, Checkout, Orders, Login, Register, Profile, etc.
 ├── frontend-store/          # Admin management (port 5174)
-│   └── src/                 # Same structure, ADMIN-only route guards
+│   └── src/                 # Similar structure (Login/Dashboard/ProductManage/Orders/Profile), ADMIN-only route guards
 └── docs/                    # Specs, task docs, plans
 ```
 
@@ -96,15 +96,17 @@ docker compose down      # Stop all services
 
 ## Data Model (Prisma)
 
-8 models: **User**, **Category** (self-referencing tree), **Product**, **CartItem**, **Order**, **OrderItem** (snapshot), **OrderSequence** (atomic order-no generator), **Review**
+10 models + enums: **User**, **Category** (self-referencing tree), **Product**, **CartItem**, **Order**, **OrderItem** (snapshot), **OrderSequence** (atomic order-no generator), **Review**, **RefreshToken**, **PasswordResetToken**. Enums: **UserRole**, **OrderStatus**.
 
 Key design decisions:
-- **Symmetric registration**: Same email can hold USER+ADMIN roles (comma-separated string). Registering on the other side appends the role if password matches.
+- **Admin creation is controlled**: Admin accounts are seeded or created by existing admins; no public admin self-registration. User role is a single enum.
 - **Order items are snapshots**: `OrderItem` stores `productName`, `productPrice`, `productImage` at time of purchase — unaffected by later product edits/deletion.
 - **Soft delete for products**: `isActive` boolean toggle, never hard-delete (preserves order history).
 - **Order numbering**: `OrderSequence` table for `YYYYMMDD` + 4-digit atomic increment.
 - **Inventory protection**: Stock decrement uses `WHERE stock >= quantity` for optimistic concurrency.
-- **Reviews**: One review per order (`orderId` @unique), up to 3 return attempts (`returnAttempts`).
+- **Reviews**: One review per order item (`@@unique([orderId, productId])`), up to 3 return attempts (`returnAttempts`).
+- **Refresh token rotation**: Refresh tokens are stored hashed and rotated on refresh; logout revokes the current token.
+- **Password reset**: Uses short-lived reset tokens (returned in dev, emailed in prod), not fixed default passwords.
 
 ## Order State Machine
 
@@ -126,7 +128,7 @@ CANCELLED and REFUNDED are terminal states. Return requests capped at 3 attempts
 ## Key Middleware
 
 - `authenticate` — extracts Bearer token, attaches `req.user` (userId, email, role)
-- `requireRole(...roles)` — checks `req.user.role` includes any of the required roles
+- `requireRole(...roles)` — checks `req.user.role` matches any required role
 - `validate(zodSchema)` — validates `{ body, query, params }` against a zod schema, returns 400 with field-level errors
 
 ## Decimal Handling
@@ -139,7 +141,7 @@ Prisma `Decimal` type must be serialized to `Number` in Express responses. The b
 - Axios request interceptor attaches `Authorization: Bearer <accessToken>`
 - Axios response interceptor catches 401 → tries `/api/auth/refresh` with refresh token → retries original request
 - On refresh failure: clear storage, redirect to `/login`
-- Store frontend additionally checks `role.includes('ADMIN')` on app load, clears session if absent
+- Store frontend only exposes login (no register) and checks `role === 'ADMIN'` on app load; clears session if absent
 
 ## Image Handling
 
