@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ordersApi } from '../api/orders';
 
@@ -14,6 +14,7 @@ const STATUS_MAP: Record<string, string> = {
 
 export function OrderDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [rejectReason, setRejectReason] = useState('');
   const [showRejectForm, setShowRejectForm] = useState(false);
@@ -26,22 +27,36 @@ export function OrderDetail() {
 
   const shipMutation = useMutation({
     mutationFn: () => ordersApi.updateStatus(Number(id), 'SHIPPED'),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['order', 'admin', id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['order', 'admin', id] });
+      queryClient.invalidateQueries({ queryKey: ['orders', 'admin'] });
+    },
   });
 
   const approveReturnMutation = useMutation({
     mutationFn: () => ordersApi.approveReturn(Number(id)),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['order', 'admin', id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['order', 'admin', id] });
+      queryClient.invalidateQueries({ queryKey: ['orders', 'admin'] });
+    },
   });
 
   const rejectReturnMutation = useMutation({
     mutationFn: () => ordersApi.rejectReturn(Number(id), rejectReason || undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['order', 'admin', id] });
+      queryClient.invalidateQueries({ queryKey: ['orders', 'admin'] });
       setShowRejectForm(false);
       setRejectReason('');
     },
   });
+
+  // Reset mutation state when navigating to a different order
+  useEffect(() => {
+    shipMutation.reset();
+    approveReturnMutation.reset();
+    rejectReturnMutation.reset();
+  }, [id]);
 
   if (isLoading) {
     return (
@@ -72,6 +87,18 @@ export function OrderDetail() {
 
   return (
     <div className="max-w-2xl mx-auto">
+      <div className="flex items-center gap-3 mb-4">
+        <button
+          onClick={() => navigate('/orders')}
+          className="flex items-center gap-1 text-xs font-medium hover:opacity-70 transition-opacity"
+          style={{ color: 'var(--color-slate-500)' }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 19l-7-7 7-7" />
+          </svg>
+          返回订单列表
+        </button>
+      </div>
       <h1 style={{ marginBottom: '1.25rem' }}>订单详情</h1>
 
       <div className="p-6 space-y-4" style={cardStyle}>

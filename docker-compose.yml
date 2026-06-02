@@ -35,13 +35,33 @@ services:
       PORT: 3000
     volumes:
       - ./backend/uploads:/app/uploads
-      - ./backend/src:/app/src
-      - ./backend/prisma:/app/prisma
     depends_on:
       mysql:
         condition: service_healthy
     command: >
-      sh -c "npx prisma db push && npx prisma db seed && npx tsx watch src/index.ts"
+      sh -c "npx prisma db push && npx prisma db seed && npx tsx src/index.ts"
+
+  user-frontend:
+    build:
+      context: ./frontend-user
+      dockerfile: Dockerfile
+    container_name: ecommerce-user-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+  store-frontend:
+    build:
+      context: ./frontend-store
+      dockerfile: Dockerfile
+    container_name: ecommerce-store-frontend
+    restart: unless-stopped
+    ports:
+      - "5174:80"
+    depends_on:
+      - backend
 
 volumes:
   mysql_data:

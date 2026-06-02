@@ -25,7 +25,18 @@
       "Bash(curl -s \"http://localhost:3000/api/products/4\")",
       "Bash(curl -s http://localhost:3000/api-docs -o /dev/null -w \"HTTP %{http_code}, Size: %{size_download} bytes\")",
       "Bash(curl -s http://localhost:5173 -o /dev/null -w \"HTTP %{http_code}, Size: %{size_download} bytes\")",
-      "Bash(curl -s http://localhost:5174 -o /dev/null -w \"HTTP %{http_code}, Size: %{size_download} bytes\")"
+      "Bash(curl -s http://localhost:5174 -o /dev/null -w \"HTTP %{http_code}, Size: %{size_download} bytes\")",
+      "Bash(docker stop *)",
+      "Bash(npx prisma *)",
+      "Bash(docker info *)",
+      "Bash(docker pull nginx:alpine *)",
+      "Bash(curl *)",
+      "Bash(DOCKER_BUILDKIT=0 docker compose up -d)",
+      "Bash(DOCKER_BUILDKIT=0 docker compose up -d --build backend)",
+      "Bash(DOCKER_BUILDKIT=0 docker compose up -d --build store-frontend)",
+      "Bash(DOCKER_BUILDKIT=0 docker compose up -d --build user-frontend store-frontend)",
+      "Bash(DOCKER_BUILDKIT=0 docker compose up -d --build user-frontend)",
+      "Bash(python -c \"import sys,json; data=json.load\\(sys.stdin\\); print\\(f'父分类: {len\\(data\\)} 个, 子分类: {sum\\(len\\(c[\\\\\"children\\\\\"]\\) for c in data\\)} 个'\\); [print\\(f'  {c[\\\\\"name\\\\\"]}: {[ch[\\\\\"name\\\\\"] for ch in c[\\\\\"children\\\\\"]]}'\\) for c in data]\")"
     ]
   }
 }

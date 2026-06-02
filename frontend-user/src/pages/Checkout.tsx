@@ -23,6 +23,7 @@ export function Checkout() {
     mutationFn: () => ordersApi.create({ recipientName, recipientAddress, recipientPhone }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['cart'] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
       navigate(`/payment-success/${res.data.id}`, { replace: true });
     },
   });

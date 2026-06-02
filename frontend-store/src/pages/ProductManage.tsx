@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { productsApi, Product } from '../api/products';
+import { productsApi, type Product } from '../api/products';
 
 export function ProductManage() {
   const queryClient = useQueryClient();

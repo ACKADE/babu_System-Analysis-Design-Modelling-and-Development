@@ -113,6 +113,45 @@ input, select, textarea, button {
 .nav-link.active { color: var(--color-ink); }
 .nav-link.active::after { width: 100%; }
 
+/* Filter chips */
+.filter-chip {
+  position: relative;
+  padding: 0.3rem 0.65rem;
+  border: none;
+  background: transparent;
+  color: var(--color-ink-muted);
+  font-size: 0.8rem;
+  font-weight: 450;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: color 0.15s ease, background 0.15s ease;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+.filter-chip:hover { color: var(--color-ink); background: var(--color-paper-warm); }
+.filter-chip[data-active='true'] {
+  color: var(--color-terra);
+  background: var(--color-terra-bg);
+}
+.filter-chip--sub {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  color: var(--color-ink-muted);
+  opacity: 0.85;
+}
+.filter-chip--sub[data-active='true'] {
+  opacity: 1;
+}
+
+/* Filter panel expand animation */
+.filter-panel-open {
+  animation: fadeDown 0.2s ease-out both;
+}
+@keyframes fadeDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* Skeleton pulse */
 @keyframes skeletonPulse {
   0%, 100% { opacity: 0.4; }

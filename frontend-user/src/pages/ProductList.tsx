@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { productsApi, Product } from '../api/products';
+import { productsApi, type Product } from '../api/products';
 import { categoriesApi } from '../api/categories';
 
 export function ProductList() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
 
   const { data: products, isLoading, isError } = useQuery({
     queryKey: ['products'],
@@ -56,44 +57,80 @@ export function ProductList() {
   return (
     <div>
       {categories && categories.length > 0 && (
-        <div className="flex gap-2 mb-8 flex-wrap">
-          <button
-            onClick={() => setSelectedCategoryId(null)}
-            className="px-4 py-1.5 rounded-[3px] text-sm font-medium transition-all duration-150"
-            style={{
-              background: selectedCategoryId === null ? 'var(--color-ink)' : 'var(--color-paper-warm)',
-              color: selectedCategoryId === null ? 'var(--color-paper)' : 'var(--color-ink-light)',
-            }}
+        <div className="mb-10">
+          {/* Collapsed bar — always visible */}
+          <div
+            className="flex items-center gap-1.5 pb-3"
+            style={{ borderBottom: '1px solid var(--color-paper-dark)' }}
           >
-            全部
-          </button>
-          {categories.map((cat: any) => (
-            <span key={cat.id} className="flex gap-1">
+            <button
+              onClick={() => setSelectedCategoryId(null)}
+              className="filter-chip shrink-0"
+              data-active={selectedCategoryId === null ? 'true' : 'false'}
+            >
+              全部商品
+            </button>
+            {!filterOpen && (
               <button
-                onClick={() => setSelectedCategoryId(cat.id)}
-                className="px-4 py-1.5 rounded-[3px] text-sm font-medium transition-all duration-150"
-                style={{
-                  background: selectedCategoryId === cat.id ? 'var(--color-ink)' : 'var(--color-paper-warm)',
-                  color: selectedCategoryId === cat.id ? 'var(--color-paper)' : 'var(--color-ink-light)',
-                }}
+                onClick={() => setFilterOpen(true)}
+                className="flex items-center gap-1 shrink-0 hover:opacity-70 transition-opacity"
+                style={{ color: 'var(--color-ink-muted)', fontSize: '0.8rem' }}
               >
-                {cat.name}
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+                筛选
               </button>
-              {cat.children?.map((child: any) => (
-                <button
-                  key={child.id}
-                  onClick={() => setSelectedCategoryId(child.id)}
-                  className="px-4 py-1.5 rounded-[3px] text-sm font-medium transition-all duration-150 ml-0.5"
-                  style={{
-                    background: selectedCategoryId === child.id ? 'var(--color-ink)' : 'var(--color-paper-warm)',
-                    color: selectedCategoryId === child.id ? 'var(--color-paper)' : 'var(--color-ink-light)',
-                  }}
-                >
-                  {child.name}
-                </button>
-              ))}
-            </span>
-          ))}
+            )}
+            {selectedCategoryId !== null && (
+              <span className="ml-auto shrink-0" style={{ color: 'var(--color-ink-muted)', fontSize: '0.75rem' }}>
+                {filtered.length} 件商品
+              </span>
+            )}
+          </div>
+
+          {/* Expanded panel */}
+          {filterOpen && (
+            <div className="filter-panel-open">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-4 pt-4 pb-3">
+                {categories.map((cat: any) => (
+                  <div key={cat.id} className="min-w-0">
+                    <button
+                      onClick={() => setSelectedCategoryId(cat.id)}
+                      className="filter-chip"
+                      data-active={selectedCategoryId === cat.id ? 'true' : 'false'}
+                    >
+                      {cat.name}
+                    </button>
+                    {cat.children?.length > 0 && (
+                      <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 mt-1.5">
+                        {cat.children.map((child: any) => (
+                          <button
+                            key={child.id}
+                            onClick={() => setSelectedCategoryId(child.id)}
+                            className="filter-chip filter-chip--sub"
+                            data-active={selectedCategoryId === child.id ? 'true' : 'false'}
+                          >
+                            {child.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => setFilterOpen(false)}
+                className="flex items-center gap-1 pb-3 hover:opacity-70 transition-opacity"
+                style={{ color: 'var(--color-ink-muted)', fontSize: '0.8rem' }}
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 15l-6-6-6 6" />
+                </svg>
+                收起
+              </button>
+            </div>
+          )}
         </div>
       )}
 

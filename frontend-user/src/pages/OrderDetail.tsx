@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ordersApi } from '../api/orders';
 
@@ -14,6 +14,7 @@ const STATUS_MAP: Record<string, string> = {
 
 export function OrderDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [returnReason, setReturnReason] = useState('');
   const [showReturnForm, setShowReturnForm] = useState(false);
@@ -30,18 +31,25 @@ export function OrderDetail() {
 
   const cancelMutation = useMutation({
     mutationFn: () => ordersApi.cancel(Number(id)),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['order', id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['order', id] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+    },
   });
 
   const confirmMutation = useMutation({
     mutationFn: () => ordersApi.confirm(Number(id)),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['order', id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['order', id] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+    },
   });
 
   const returnMutation = useMutation({
     mutationFn: () => ordersApi.requestReturn(Number(id), returnReason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['order', id] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
       setShowReturnForm(false);
       setReturnReason('');
     },
@@ -59,6 +67,14 @@ export function OrderDetail() {
       setReviewContent('');
     },
   });
+
+  // Reset mutation state when navigating to a different order
+  useEffect(() => {
+    cancelMutation.reset();
+    confirmMutation.reset();
+    returnMutation.reset();
+    reviewMutation.reset();
+  }, [id]);
 
   if (isLoading) {
     return (
@@ -86,6 +102,18 @@ export function OrderDetail() {
 
   return (
     <div className="max-w-2xl mx-auto page-enter">
+      <div className="flex items-center gap-3 mb-6">
+        <button
+          onClick={() => navigate('/orders')}
+          className="flex items-center gap-1 text-xs font-medium hover:opacity-70 transition-opacity"
+          style={{ color: 'var(--color-ink-light)' }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 19l-7-7 7-7" />
+          </svg>
+          返回订单列表
+        </button>
+      </div>
       <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', marginBottom: '1.5rem' }}>订单详情</h1>
 
       <div
@@ -195,6 +223,12 @@ export function OrderDetail() {
           </button>
         )}
       </div>
+
+      {(cancelMutation.isError || confirmMutation.isError) && (
+        <p className="text-sm mt-3" style={{ color: 'var(--color-terra)' }}>
+          {(cancelMutation.error || confirmMutation.error as any)?.response?.data?.message || '操作失败'}
+        </p>
+      )}
 
       {showReturnForm && (
         <div

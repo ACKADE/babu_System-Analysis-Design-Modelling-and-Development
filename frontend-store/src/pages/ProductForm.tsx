@@ -1,8 +1,100 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productsApi } from '../api/products';
 import { categoriesApi } from '../api/categories';
+
+function FileUploadZone({
+  label, accept = 'image/*', preview, onFile, hint,
+}: {
+  label: string;
+  accept?: string;
+  preview: string | null;
+  onFile: (file: File) => void;
+  hint: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleClick = () => inputRef.current?.click();
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      onFile(file);
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) onFile(file);
+  };
+
+  return (
+    <div>
+      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-slate-400)' }}>{label}</label>
+      {preview ? (
+        <div style={{ position: 'relative', display: 'inline-block' }}>
+          <img
+            src={preview}
+            alt={`${label}预览`}
+            className="w-28 h-28 object-cover rounded-[4px] cursor-pointer"
+            style={{ border: '1px solid var(--color-slate-700)' }}
+            onClick={handleClick}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              if (inputRef.current) {
+                inputRef.current.value = '';
+                const fake = new DataTransfer();
+                inputRef.current.files = fake.files;
+                inputRef.current.dispatchEvent(new Event('change', { bubbles: true }));
+              }
+              onFile(null as any);
+            }}
+            className="absolute -top-2 -right-2 w-5 h-5 flex items-center justify-center rounded-full text-[10px]"
+            style={{ background: 'var(--color-slate-700)', color: 'var(--color-slate-300)' }}
+            title="移除图片"
+          >
+            &times;
+          </button>
+        </div>
+      ) : (
+        <div
+          className="file-upload-zone"
+          onClick={handleClick}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            style={{ color: 'var(--color-slate-600)', marginBottom: '0.5rem' }}>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+              d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <span className="text-xs" style={{ color: 'var(--color-slate-500)' }}>
+            {hint}
+          </span>
+          <span className="text-[10px] mt-1" style={{ color: 'var(--color-slate-600)' }}>
+            支持 JPG / PNG / WebP / GIF
+          </span>
+        </div>
+      )}
+      <input
+        ref={inputRef}
+        type="file" accept={accept}
+        onChange={handleChange}
+        style={{ display: 'none' }}
+      />
+    </div>
+  );
+}
 
 export function ProductForm() {
   const { id } = useParams<{ id: string }>();
@@ -149,40 +241,24 @@ export function ProductForm() {
             ])}
           </select>
         </div>
-        <div>
-          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-slate-400)' }}>缩略图</label>
-          <input
-            type="file" accept="image/*"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) { setThumbnail(file); setThumbnailPreview(URL.createObjectURL(file)); }
-            }}
-            className="text-xs"
-            style={{ color: 'var(--color-slate-400)' }}
-          />
-          {thumbnailPreview && (
-            <img src={thumbnailPreview} alt="缩略图预览"
-              className="mt-2 w-24 h-24 object-cover rounded-[3px]"
-              style={{ border: '1px solid var(--color-slate-700)' }} />
-          )}
-        </div>
-        <div>
-          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-slate-400)' }}>详情图</label>
-          <input
-            type="file" accept="image/*"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) { setImage(file); setImagePreview(URL.createObjectURL(file)); }
-            }}
-            className="text-xs"
-            style={{ color: 'var(--color-slate-400)' }}
-          />
-          {imagePreview && (
-            <img src={imagePreview} alt="详情图预览"
-              className="mt-2 w-24 h-24 object-cover rounded-[3px]"
-              style={{ border: '1px solid var(--color-slate-700)' }} />
-          )}
-        </div>
+        <FileUploadZone
+          label="缩略图"
+          preview={thumbnailPreview}
+          onFile={(file) => {
+            if (!file) { setThumbnail(null); setThumbnailPreview(''); return; }
+            setThumbnail(file); setThumbnailPreview(URL.createObjectURL(file));
+          }}
+          hint="点击或拖拽上传缩略图"
+        />
+        <FileUploadZone
+          label="详情图"
+          preview={imagePreview}
+          onFile={(file) => {
+            if (!file) { setImage(null); setImagePreview(''); return; }
+            setImage(file); setImagePreview(URL.createObjectURL(file));
+          }}
+          hint="点击或拖拽上传详情图"
+        />
         <div className="flex gap-3 pt-2">
           <button
             type="button"
