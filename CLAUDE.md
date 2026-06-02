@@ -33,7 +33,7 @@ A **small e-commerce demo platform** (course project) with two frontends (user-f
 
 ```
 project-root/
-├── docker-compose.yml       # MySQL 8 + backend + (optional) phpMyAdmin
+├── docker-compose.yml       # 4 services: MySQL + backend + user-frontend + store-frontend
 ├── backend/
 │   ├── prisma/schema.prisma # 8 models (see below)
 │   ├── prisma/seed.ts
@@ -90,8 +90,12 @@ npm run build            # Production build
 npm run preview          # Preview production build
 
 # Docker
-docker compose up -d     # Start MySQL + backend
-docker compose down      # Stop all services
+docker compose up -d                   # Start all 4 services (MySQL + backend + 2 frontends)
+docker compose up -d --build           # Rebuild images then start
+docker compose down                    # Stop all services
+docker compose up -d <service-name>    # Start/rebuild single service (mysql/backend/user-frontend/store-frontend)
+# If Docker Hub is unreachable (China), use:
+DOCKER_BUILDKIT=0 docker compose up -d --build
 ```
 
 ## Data Model (Prisma)
@@ -140,6 +144,31 @@ Prisma `Decimal` type must be serialized to `Number` in Express responses. The b
 - Axios response interceptor catches 401 → tries `/api/auth/refresh` with refresh token → retries original request
 - On refresh failure: clear storage, redirect to `/login`
 - Store frontend additionally checks `role.includes('ADMIN')` on app load, clears session if absent
+
+## TanStack Query Mutation Patterns
+
+**CRITICAL**: Both frontends use `staleTime: 5 min` on the QueryClient. Queries will NOT refetch after mutations unless explicitly invalidated.
+
+Every `useMutation.onSuccess` MUST invalidate **all** affected query scopes:
+
+```tsx
+// Detail page mutation — must invalidate both detail AND list:
+onSuccess: () => {
+  queryClient.invalidateQueries({ queryKey: ['order', id] });    // detail
+  queryClient.invalidateQueries({ queryKey: ['orders'] });       // list (fuzzy — matches ['orders', 'admin'] too)
+}
+```
+
+**Cross-entity mutation state pollution**: When navigating between detail pages (e.g., Order #1 → Order #2), a prior mutation's error/success state persists because the component stays mounted. Reset all mutations on `id` change:
+
+```tsx
+useEffect(() => {
+  mutationA.reset();
+  mutationB.reset();
+}, [id]);
+```
+
+**Error display is mandatory**: Every mutation error MUST render visible feedback. `onSuccess` alone is not enough — a silent failure makes the user think the action didn't register.
 
 ## Image Handling
 
