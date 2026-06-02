@@ -674,7 +674,7 @@ export const createOrderSchema = z.object({
   body: z.object({
     recipientName: z.string().min(1, '收货人姓名不能为空'),
     recipientAddress: z.string().min(1, '收货地址不能为空'),
-    recipientPhone: z.string().min(1, '联系电话不能为空'),
+    recipientPhone: z.string().regex(/^[0-9]{7,15}$/, '手机号须为7-15位数字'),
   }),
 });
 
@@ -1470,6 +1470,10 @@ router.post('/', authenticate, requireRole('USER'), validate(addCartItemSchema),
       res.status(404).json({ message: '商品不存在' });
       return;
     }
+    if (!product.isActive) {
+      res.status(400).json({ message: '该商品已下架，无法加入购物车' });
+      return;
+    }
 
     const addQuantity = quantity || 1;
 
@@ -1528,9 +1532,17 @@ router.put('/:itemId', authenticate, requireRole('USER'), validate(updateCartIte
     const itemId = Number(req.params.itemId);
     const { quantity } = req.body;
 
-    const cartItem = await prisma.cartItem.findUnique({ where: { id: itemId } });
+    const cartItem = await prisma.cartItem.findUnique({
+      where: { id: itemId },
+      include: { product: true },
+    });
     if (!cartItem || cartItem.userId !== req.user!.userId) {
       res.status(404).json({ message: '购物车项不存在' });
+      return;
+    }
+
+    if (quantity > cartItem.product.stock) {
+      res.status(400).json({ message: `库存不足，当前库存 ${cartItem.product.stock}` });
       return;
     }
 
@@ -1658,12 +1670,15 @@ router.post('/', authenticate, requireRole('USER'), validate(createOrderSchema),
 
     // Prisma 事务：创建订单 + 扣减库存 + 生成订单编号 + 清空已结算购物车项
     const order = await prisma.$transaction(async (tx) => {
-      // 扣减库存（WHERE stock >= quantity 乐观并发保护）
+      // 扣减库存（WHERE stock >= quantity 乐观并发保护，检查返回值确保实际扣减成功）
       for (const item of activeItems) {
-        await tx.product.updateMany({
+        const result = await tx.product.updateMany({
           where: { id: item.productId, stock: { gte: item.quantity } },
           data: { stock: { decrement: item.quantity } },
         });
+        if (result.count === 0) {
+          throw new Error(`商品「${item.product.name}」库存不足，当前仅剩 ${item.product.stock} 件`);
+        }
       }
 
       // 创建订单（含快照 OrderItem）
@@ -1777,6 +1792,7 @@ router.get('/:id', authenticate, async (req: Request, res: Response): Promise<vo
       where: { id: Number(req.params.id) },
       include: {
         items: true,
+        review: true,
         user: { select: { id: true, name: true, email: true } },
       },
     });
@@ -2658,13 +2674,16 @@ export function ProtectedRoute({ children }: Props) {
 
 ```typescript
 import { Link, Outlet, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
 
 export function Layout() {
   const { user, isLoggedIn, logout } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const handleLogout = () => {
+    queryClient.clear();
     logout();
     navigate('/');
   };
