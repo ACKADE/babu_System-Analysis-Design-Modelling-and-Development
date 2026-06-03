@@ -3,6 +3,7 @@ import prisma from '../lib/prisma';
 import { authenticate, requireRole } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { createOrderSchema, updateOrderStatusSchema, returnRequestSchema } from '../schemas/order.schema';
+import { applyOrderAutoCompletion } from '../services/orderLifecycle';
 
 const router = Router();
 
@@ -110,6 +111,10 @@ router.post('/', authenticate, requireRole('USER'), validate(createOrderSchema),
 
     res.status(201).json(order);
   } catch (error) {
+    if (error instanceof Error && error.message.includes('库存不足')) {
+      res.status(400).json({ message: error.message });
+      return;
+    }
     console.error('Create order error:', error);
     res.status(500).json({ message: '创建订单失败' });
   }
@@ -147,15 +152,8 @@ router.get('/', authenticate, async (req: Request, res: Response): Promise<void>
       orderBy: { createdAt: 'desc' },
     });
 
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     for (const order of orders) {
-      if (order.status === 'SHIPPED' && order.shippedAt && new Date(order.shippedAt) <= sevenDaysAgo) {
-        await prisma.order.update({
-          where: { id: order.id },
-          data: { status: 'COMPLETED' },
-        });
-        order.status = 'COMPLETED';
-      }
+      await applyOrderAutoCompletion(order, prisma);
     }
 
     res.json(orders);
@@ -203,14 +201,7 @@ router.get('/:id', authenticate, async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    if (order.status === 'SHIPPED' && order.shippedAt && new Date(order.shippedAt) <= sevenDaysAgo) {
-      await prisma.order.update({
-        where: { id: order.id },
-        data: { status: 'COMPLETED' },
-      });
-      order.status = 'COMPLETED';
-    }
+    await applyOrderAutoCompletion(order, prisma);
 
     res.json(order);
   } catch (error) {
@@ -439,7 +430,7 @@ router.post('/:id/return', authenticate, requireRole('USER'), validate(returnReq
  * /api/orders/{id}/return/approve:
  *   post:
  *     tags: [Orders]
- *     summary: 同意退货 (ADMIN: RETURN_PENDING → REFUNDED，恢复库存)
+ *     summary: "同意退货 (ADMIN: RETURN_PENDING → REFUNDED，恢复库存)"
  *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - in: path
@@ -487,7 +478,7 @@ router.post('/:id/return/approve', authenticate, requireRole('ADMIN'), async (re
  * /api/orders/{id}/return/reject:
  *   post:
  *     tags: [Orders]
- *     summary: 拒绝退货 (ADMIN: RETURN_PENDING → COMPLETED)
+ *     summary: "拒绝退货 (ADMIN: RETURN_PENDING → COMPLETED)"
  *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - in: path

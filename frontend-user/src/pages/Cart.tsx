@@ -1,22 +1,28 @@
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { cartApi } from '../api/cart';
+import type { AxiosError } from 'axios';
+import { cartApi, type CartItem } from '../api/cart';
+import type { ApiMessageError } from '../api/orders';
 
 export function Cart() {
   const queryClient = useQueryClient();
 
   const { data: cartItems, isLoading, isError } = useQuery({
     queryKey: ['cart'],
-    queryFn: async () => { const res = await cartApi.getAll(); return res.data; },
+    queryFn: cartApi.getAll,
   });
 
-  const updateMutation = useMutation({
+  const updateMutation = useMutation<
+    unknown,
+    AxiosError<ApiMessageError>,
+    { itemId: number; quantity: number }
+  >({
     mutationFn: ({ itemId, quantity }: { itemId: number; quantity: number }) =>
       cartApi.update(itemId, quantity),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['cart'] }),
   });
 
-  const removeMutation = useMutation({
+  const removeMutation = useMutation<unknown, AxiosError<ApiMessageError>, number>({
     mutationFn: (itemId: number) => cartApi.remove(itemId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['cart'] }),
   });
@@ -39,9 +45,13 @@ export function Cart() {
   }
 
   const items = cartItems || [];
-  const activeItems = items.filter((item: any) => item.product.isActive);
+  const activeItems = items.filter((item: CartItem) => item.product.isActive);
   const total = activeItems
-    .reduce((sum: number, item: any) => sum + Number(item.product.price) * item.quantity, 0);
+    .reduce((sum: number, item: CartItem) => sum + Number(item.product.price) * item.quantity, 0);
+  const actionErrorMessage =
+    updateMutation.error?.response?.data?.message ||
+    removeMutation.error?.response?.data?.message ||
+    '操作失败';
 
   if (items.length === 0) {
     return (
@@ -67,12 +77,12 @@ export function Cart() {
           className="p-3 rounded-[3px] mb-4 text-sm font-medium"
           style={{ background: 'var(--color-terra-bg)', color: 'var(--color-terra)' }}
         >
-          {((updateMutation.error || removeMutation.error) as any)?.response?.data?.message || '操作失败'}
+          {actionErrorMessage}
         </div>
       )}
 
       <div className="rounded-[3px] overflow-hidden" style={{ background: 'white', boxShadow: 'var(--shadow-card)' }}>
-        {items.map((item: any) => {
+        {items.map((item: CartItem) => {
           const isOff = !item.product.isActive;
           return (
             <div

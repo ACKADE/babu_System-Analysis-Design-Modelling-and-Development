@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../lib/prisma';
+import { verifyAccessToken } from '../lib/jwt';
 import { authenticate, requireRole } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { upload } from '../middleware/upload';
@@ -33,7 +34,18 @@ function deleteFileIfExists(relativePath: string | null | undefined): void {
  */
 router.get('/', async (req: Request, res: Response): Promise<void> => {
   try {
-    const showAll = req.query.all === 'true';
+    let showAll = false;
+    if (req.query.all === 'true') {
+      const authHeader = req.headers.authorization;
+      if (authHeader?.startsWith('Bearer ')) {
+        try {
+          const payload = verifyAccessToken(authHeader.split(' ')[1]);
+          showAll = payload.role.split(',').map((role) => role.trim()).includes('ADMIN');
+        } catch {
+          showAll = false;
+        }
+      }
+    }
     const products = await prisma.product.findMany({
       where: showAll ? {} : { isActive: true },
       orderBy: { createdAt: 'desc' },
@@ -68,6 +80,27 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
     if (!product) {
       res.status(404).json({ message: '商品不存在' });
       return;
+    }
+    if (!product.isActive) {
+      let isAdmin = false;
+      const authHeader = req.headers.authorization;
+
+      if (authHeader?.startsWith('Bearer ')) {
+        try {
+          const payload = verifyAccessToken(authHeader.split(' ')[1]);
+          isAdmin = payload.role
+            .split(',')
+            .map((role) => role.trim())
+            .includes('ADMIN');
+        } catch {
+          isAdmin = false;
+        }
+      }
+
+      if (!isAdmin) {
+        res.status(404).json({ message: '商品不存在' });
+        return;
+      }
     }
     res.json(product);
   } catch (error) {

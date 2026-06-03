@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ordersApi } from '../api/orders';
+import { ordersApi, type Order, type OrderItemSnapshot } from '../api/orders';
 
 const STATUS_MAP: Record<string, string> = {
   PAID: '待发货',
@@ -23,7 +23,7 @@ const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
 export function Orders() {
   const { data: orders, isLoading, isError } = useQuery({
     queryKey: ['orders'],
-    queryFn: async () => { const res = await ordersApi.getAll(); return res.data; },
+    queryFn: ordersApi.getAll,
   });
 
   if (isLoading) {
@@ -56,7 +56,7 @@ export function Orders() {
     <div className="page-enter">
       <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', marginBottom: '1.5rem' }}>我的订单</h1>
       <div className="space-y-4">
-        {(orders as any[]).map((order: any, idx: number) => {
+        {orders.map((order: Order, idx: number) => {
           const st = STATUS_STYLE[order.status] || STATUS_STYLE.CANCELLED;
           return (
             <Link
@@ -89,7 +89,7 @@ export function Orders() {
                 </span>
               </div>
               <div className="space-y-2.5">
-                {order.items?.map((item: any) => (
+                {order.items?.map((item: OrderItemSnapshot) => (
                   <div key={item.id} className="flex items-center gap-3">
                     <div
                       className="w-10 h-10 rounded-[2px] overflow-hidden shrink-0"

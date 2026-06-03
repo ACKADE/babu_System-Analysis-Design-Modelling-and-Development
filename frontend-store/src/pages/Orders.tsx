@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ordersApi } from '../api/orders';
+import { ordersApi, type Order } from '../api/orders';
 
 const COLUMNS = [
   { key: 'PAID', label: '待发货', accent: '#60a5fa' },
@@ -17,7 +17,7 @@ const STATUS_LABEL: Record<string, string> = {
 export function Orders() {
   const { data: orders, isLoading, isError } = useQuery({
     queryKey: ['orders', 'admin'],
-    queryFn: async () => { const res = await ordersApi.getAll(); return res.data; },
+    queryFn: ordersApi.getAll,
   });
 
   if (isLoading) {
@@ -37,7 +37,7 @@ export function Orders() {
     );
   }
 
-  const grouped: Record<string, any[]> = {};
+  const grouped: Record<string, Order[]> = {};
   for (const col of COLUMNS) grouped[col.key] = [];
   grouped['_other'] = [];
   for (const o of orders || []) {
@@ -143,7 +143,7 @@ export function Orders() {
                     暂无订单
                   </p>
                 ) : (
-                  grouped[col.key].map((order: any, idx: number) => (
+                  grouped[col.key].map((order: Order, idx: number) => (
                     <Link
                       key={order.id}
                       to={`/orders/${order.id}`}
@@ -274,7 +274,7 @@ export function Orders() {
                     暂无订单
                   </p>
                 ) : (
-                  grouped[col.key].map((order: any) => (
+                  grouped[col.key].map((order: Order) => (
                     <Link
                       key={order.id}
                       to={`/orders/${order.id}`}
@@ -360,7 +360,7 @@ export function Orders() {
                     marginTop: '0.75rem',
                   }}
                 >
-                  {grouped['_other'].map((order: any) => (
+                  {grouped['_other'].map((order: Order) => (
                     <Link
                       key={order.id}
                       to={`/orders/${order.id}`}

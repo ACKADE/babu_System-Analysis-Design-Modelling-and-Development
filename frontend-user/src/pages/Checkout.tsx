@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { cartApi } from '../api/cart';
-import { ordersApi } from '../api/orders';
+import type { AxiosError } from 'axios';
+import { cartApi, type CartItem } from '../api/cart';
+import { ordersApi, type ApiMessageError, type Order } from '../api/orders';
 
 export function Checkout() {
   const navigate = useNavigate();
@@ -13,18 +14,18 @@ export function Checkout() {
 
   const { data: cartItems, isLoading } = useQuery({
     queryKey: ['cart'],
-    queryFn: async () => { const res = await cartApi.getAll(); return res.data; },
+    queryFn: cartApi.getAll,
   });
 
-  const items = (cartItems || []).filter((item: any) => item.product.isActive);
-  const total = items.reduce((sum: number, item: any) => sum + Number(item.product.price) * item.quantity, 0);
+  const items = (cartItems || []).filter((item: CartItem) => item.product.isActive);
+  const total = items.reduce((sum: number, item: CartItem) => sum + Number(item.product.price) * item.quantity, 0);
 
-  const createOrderMutation = useMutation({
+  const createOrderMutation = useMutation<Order, AxiosError<ApiMessageError>>({
     mutationFn: () => ordersApi.create({ recipientName, recipientAddress, recipientPhone }),
-    onSuccess: (res) => {
+    onSuccess: (createdOrder) => {
       queryClient.invalidateQueries({ queryKey: ['cart'] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
-      navigate(`/payment-success/${res.data.id}`, { replace: true });
+      navigate(`/payment-success/${createdOrder.id}`, { replace: true });
     },
   });
 
@@ -101,7 +102,7 @@ export function Checkout() {
         style={{ background: 'white', boxShadow: 'var(--shadow-card)' }}
       >
         <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--color-ink)' }}>商品清单</h2>
-        {items.map((item: any) => (
+        {items.map((item: CartItem) => (
           <div
             key={item.id}
             className="flex items-center gap-3 py-2.5"
@@ -129,7 +130,7 @@ export function Checkout() {
           className="p-3 rounded-[3px] mb-4 text-sm font-medium"
           style={{ background: 'var(--color-terra-bg)', color: 'var(--color-terra)' }}
         >
-          {(createOrderMutation.error as any)?.response?.data?.message || '提交订单失败'}
+          {createOrderMutation.error?.response?.data?.message || '提交订单失败'}
         </div>
       )}
 

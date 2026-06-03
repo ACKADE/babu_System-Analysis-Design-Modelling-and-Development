@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { cartApi } from '../api/cart';
+import { cartApi, type CartItem } from '../api/cart';
 import { useAuth } from '../hooks/useAuth';
 
 export function Layout() {
@@ -14,10 +14,10 @@ export function Layout() {
 
   const { data: cartItems } = useQuery({
     queryKey: ['cart'],
-    queryFn: async () => { const res = await cartApi.getAll(); return res.data; },
+    queryFn: cartApi.getAll,
     enabled: isLoggedIn,
   });
-  const cartCount = cartItems?.reduce((sum: number, item: any) => sum + item.quantity, 0) || 0;
+  const cartCount = cartItems?.reduce((sum: number, item: CartItem) => sum + item.quantity, 0) || 0;
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {

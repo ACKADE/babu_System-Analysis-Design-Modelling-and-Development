@@ -1,7 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ordersApi } from '../api/orders';
+import type { AxiosError } from 'axios';
+import {
+  ordersApi,
+  type ApiMessageError,
+  type Order,
+  type OrderItemSnapshot,
+} from '../api/orders';
 
 const STATUS_MAP: Record<string, string> = {
   PAID: '待发货',
@@ -25,11 +31,11 @@ export function OrderDetail() {
 
   const { data: order, isLoading, isError } = useQuery({
     queryKey: ['order', id],
-    queryFn: async () => { const res = await ordersApi.getById(Number(id)); return res.data; },
+    queryFn: () => ordersApi.getById(Number(id)),
     enabled: !!id,
   });
 
-  const cancelMutation = useMutation({
+  const cancelMutation = useMutation<unknown, AxiosError<ApiMessageError>>({
     mutationFn: () => ordersApi.cancel(Number(id)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['order', id] });
@@ -37,7 +43,7 @@ export function OrderDetail() {
     },
   });
 
-  const confirmMutation = useMutation({
+  const confirmMutation = useMutation<unknown, AxiosError<ApiMessageError>>({
     mutationFn: () => ordersApi.confirm(Number(id)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['order', id] });
@@ -45,7 +51,7 @@ export function OrderDetail() {
     },
   });
 
-  const returnMutation = useMutation({
+  const returnMutation = useMutation<unknown, AxiosError<ApiMessageError>>({
     mutationFn: () => ordersApi.requestReturn(Number(id), returnReason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['order', id] });
@@ -55,7 +61,7 @@ export function OrderDetail() {
     },
   });
 
-  const reviewMutation = useMutation({
+  const reviewMutation = useMutation<unknown, AxiosError<ApiMessageError>>({
     mutationFn: () => ordersApi.createReview(Number(id), {
       productId: reviewProductId,
       rating: reviewRating,
@@ -94,11 +100,15 @@ export function OrderDetail() {
     );
   }
 
-  const o = order as any;
+  const o: Order = order;
   const canCancel = o.status === 'PAID';
   const canConfirm = o.status === 'SHIPPED';
   const canReturn = o.status === 'COMPLETED' && o.returnAttempts < 3;
   const canReview = o.status === 'COMPLETED' && !o.review;
+  const actionErrorMessage =
+    cancelMutation.error?.response?.data?.message ||
+    confirmMutation.error?.response?.data?.message ||
+    '操作失败';
 
   return (
     <div className="max-w-2xl mx-auto page-enter">
@@ -138,7 +148,7 @@ export function OrderDetail() {
 
         <div className="pt-4" style={{ borderTop: '1px solid var(--color-paper-dark)' }}>
           <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--color-ink)' }}>商品清单</h3>
-          {o.items?.map((item: any) => (
+          {o.items?.map((item: OrderItemSnapshot) => (
             <div
               key={item.id}
               className="flex items-center gap-3 py-2.5"
@@ -226,7 +236,7 @@ export function OrderDetail() {
 
       {(cancelMutation.isError || confirmMutation.isError) && (
         <p className="text-sm mt-3" style={{ color: 'var(--color-terra)' }}>
-          {(cancelMutation.error || confirmMutation.error as any)?.response?.data?.message || '操作失败'}
+          {actionErrorMessage}
         </p>
       )}
 
@@ -261,7 +271,7 @@ export function OrderDetail() {
           </div>
           {returnMutation.isError && (
             <p className="text-sm mt-2" style={{ color: 'var(--color-terra)' }}>
-              {(returnMutation.error as any)?.response?.data?.message || '申请失败'}
+              {returnMutation.error?.response?.data?.message || '申请失败'}
             </p>
           )}
         </div>
@@ -296,7 +306,7 @@ export function OrderDetail() {
                 onChange={(e) => setReviewProductId(Number(e.target.value))}
                 className="input-field"
               >
-                {o.items?.map((item: any) => (
+                {o.items?.map((item: OrderItemSnapshot) => (
                   <option key={item.productId} value={item.productId}>{item.productName}</option>
                 ))}
               </select>
@@ -339,7 +349,7 @@ export function OrderDetail() {
             </div>
             {reviewMutation.isError && (
               <p className="text-sm" style={{ color: 'var(--color-terra)' }}>
-                {(reviewMutation.error as any)?.response?.data?.message || '评价失败'}
+                {reviewMutation.error?.response?.data?.message || '评价失败'}
               </p>
             )}
           </div>

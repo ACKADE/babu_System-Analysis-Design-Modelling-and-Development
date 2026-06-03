@@ -7,7 +7,7 @@ export function PaymentSuccess() {
 
   const { data: order, isLoading, isError } = useQuery({
     queryKey: ['order', orderId],
-    queryFn: async () => { const res = await ordersApi.getById(Number(orderId)); return res.data; },
+    queryFn: () => ordersApi.getById(Number(orderId)),
     enabled: !!orderId,
     retry: 1,
   });
@@ -53,25 +53,25 @@ export function PaymentSuccess() {
           <div className="flex justify-between">
             <span style={{ color: 'var(--color-ink-muted)' }}>订单号</span>
             <span className="font-medium" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-ink)' }}>
-              {(order as any).orderNo}
+              {order.orderNo}
             </span>
           </div>
           <div className="flex justify-between">
             <span style={{ color: 'var(--color-ink-muted)' }}>收货人</span>
-            <span style={{ color: 'var(--color-ink)' }}>{(order as any).recipientName}</span>
+            <span style={{ color: 'var(--color-ink)' }}>{order.recipientName}</span>
           </div>
           <div className="flex justify-between">
             <span style={{ color: 'var(--color-ink-muted)' }}>收货地址</span>
-            <span style={{ color: 'var(--color-ink)' }}>{(order as any).recipientAddress}</span>
+            <span style={{ color: 'var(--color-ink)' }}>{order.recipientAddress}</span>
           </div>
           <div className="flex justify-between">
             <span style={{ color: 'var(--color-ink-muted)' }}>联系电话</span>
-            <span style={{ color: 'var(--color-ink)' }}>{(order as any).recipientPhone}</span>
+            <span style={{ color: 'var(--color-ink)' }}>{order.recipientPhone}</span>
           </div>
           <div className="flex justify-between pt-3" style={{ borderTop: '1px solid var(--color-paper-dark)' }}>
             <span style={{ color: 'var(--color-ink-muted)' }}>实付金额</span>
             <span className="text-xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-terra)' }}>
-              &yen;{Number((order as any).totalAmount).toFixed(2)}
+              &yen;{Number(order.totalAmount).toFixed(2)}
             </span>
           </div>
         </div>

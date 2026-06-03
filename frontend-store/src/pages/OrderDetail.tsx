@@ -1,7 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ordersApi } from '../api/orders';
+import type { AxiosError } from 'axios';
+import {
+  ordersApi,
+  type ApiMessageError,
+  type Order,
+  type OrderItemSnapshot,
+} from '../api/orders';
 
 const STATUS_MAP: Record<string, string> = {
   PAID: '待发货',
@@ -21,11 +27,11 @@ export function OrderDetail() {
 
   const { data: order, isLoading, isError } = useQuery({
     queryKey: ['order', 'admin', id],
-    queryFn: async () => { const res = await ordersApi.getById(Number(id)); return res.data; },
+    queryFn: () => ordersApi.getById(Number(id)),
     enabled: !!id,
   });
 
-  const shipMutation = useMutation({
+  const shipMutation = useMutation<unknown, AxiosError<ApiMessageError>>({
     mutationFn: () => ordersApi.updateStatus(Number(id), 'SHIPPED'),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['order', 'admin', id] });
@@ -33,7 +39,7 @@ export function OrderDetail() {
     },
   });
 
-  const approveReturnMutation = useMutation({
+  const approveReturnMutation = useMutation<unknown, AxiosError<ApiMessageError>>({
     mutationFn: () => ordersApi.approveReturn(Number(id)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['order', 'admin', id] });
@@ -41,7 +47,7 @@ export function OrderDetail() {
     },
   });
 
-  const rejectReturnMutation = useMutation({
+  const rejectReturnMutation = useMutation<unknown, AxiosError<ApiMessageError>>({
     mutationFn: () => ordersApi.rejectReturn(Number(id), rejectReason || undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['order', 'admin', id] });
@@ -75,9 +81,14 @@ export function OrderDetail() {
     );
   }
 
-  const o = order as any;
+  const o: Order = order;
   const canShip = o.status === 'PAID';
   const canHandleReturn = o.status === 'RETURN_PENDING';
+  const actionErrorMessage =
+    shipMutation.error?.response?.data?.message ||
+    approveReturnMutation.error?.response?.data?.message ||
+    rejectReturnMutation.error?.response?.data?.message ||
+    '操作失败';
 
   const cardStyle = {
     background: 'var(--color-slate-900)',
@@ -123,7 +134,7 @@ export function OrderDetail() {
 
         <div className="pt-4" style={{ borderTop: '1px solid var(--color-slate-800)' }}>
           <h3 className="text-xs font-semibold mb-3" style={{ color: 'var(--color-slate-300)' }}>商品清单</h3>
-          {o.items?.map((item: any) => (
+          {o.items?.map((item: OrderItemSnapshot) => (
             <div
               key={item.id}
               className="flex items-center gap-3 py-2.5"
@@ -245,7 +256,7 @@ export function OrderDetail() {
 
       {(shipMutation.isError || approveReturnMutation.isError || rejectReturnMutation.isError) && (
         <p className="text-xs mt-2" style={{ color: 'var(--color-red-soft)' }}>
-          {(shipMutation.error || approveReturnMutation.error || rejectReturnMutation.error as any)?.response?.data?.message || '操作失败'}
+          {actionErrorMessage}
         </p>
       )}
     </div>

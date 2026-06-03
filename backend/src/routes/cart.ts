@@ -135,6 +135,11 @@ router.put('/:itemId', authenticate, requireRole('USER'), validate(updateCartIte
       return;
     }
 
+    if (!cartItem.product.isActive) {
+      res.status(400).json({ message: '该商品已下架，仅支持从购物车移除' });
+      return;
+    }
+
     const updated = await prisma.cartItem.update({
       where: { id: itemId },
       data: { quantity },
