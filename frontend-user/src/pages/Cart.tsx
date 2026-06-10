@@ -3,8 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
 import { cartApi, type CartItem } from '../api/cart';
 import type { ApiMessageError } from '../api/orders';
+import { useLanguage } from '../hooks/useLanguage';
 
 export function Cart() {
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
 
   const { data: cartItems, isLoading, isError } = useQuery({
@@ -31,7 +33,7 @@ export function Cart() {
     return (
       <div className="flex flex-col items-center justify-center py-32 gap-3">
         <div className="spinner" />
-        <p style={{ color: 'var(--color-ink-muted)' }} className="text-sm">加载中...</p>
+        <p style={{ color: 'var(--color-ink-muted)' }} className="text-sm">{t('common.loading')}</p>
       </div>
     );
   }
@@ -39,7 +41,7 @@ export function Cart() {
   if (isError) {
     return (
       <div className="text-center py-32">
-        <p style={{ color: 'var(--color-terra)' }}>加载购物车失败</p>
+        <p style={{ color: 'var(--color-terra)' }}>{t('cart.loadFailed')}</p>
       </div>
     );
   }
@@ -51,7 +53,7 @@ export function Cart() {
   const actionErrorMessage =
     updateMutation.error?.response?.data?.message ||
     removeMutation.error?.response?.data?.message ||
-    '操作失败';
+    t('common.error');
 
   if (items.length === 0) {
     return (
@@ -62,15 +64,15 @@ export function Cart() {
             <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
           </svg>
         </div>
-        <p style={{ color: 'var(--color-ink-muted)' }} className="text-lg mb-4">购物车是空的</p>
-        <Link to="/" className="btn-ghost">去逛逛</Link>
+        <p style={{ color: 'var(--color-ink-muted)' }} className="text-lg mb-4">{t('cart.empty')}</p>
+        <Link to="/" className="btn-ghost">{t('product.browseShop')}</Link>
       </div>
     );
   }
 
   return (
     <div className="page-enter">
-      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', marginBottom: '1.5rem' }}>购物车</h1>
+      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', marginBottom: '1.5rem' }}>{t('cart.title')}</h1>
 
       {(updateMutation.isError || removeMutation.isError) && (
         <div
@@ -99,7 +101,7 @@ export function Cart() {
                     className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-xs" style={{ color: 'var(--color-ink-muted)' }}>
-                    暂无
+                    {t('common.noImageShort')}
                   </div>
                 )}
               </div>
@@ -119,17 +121,17 @@ export function Cart() {
                     className="text-xs px-1.5 py-0.5 rounded-[2px] mt-1 inline-block"
                     style={{ background: 'var(--color-terra-bg)', color: 'var(--color-terra)' }}
                   >
-                    已下架
+                    {t('cart.delisted')}
                   </span>
                 )}
               </div>
               {isOff ? (
                 <button
-                  onClick={() => { if (window.confirm('确认要删除此商品吗？')) removeMutation.mutate(item.id); }}
+                  onClick={() => { if (window.confirm(t('cart.confirmRemove'))) removeMutation.mutate(item.id); }}
                   className="text-sm font-medium hover:opacity-70 transition-opacity"
                   style={{ color: 'var(--color-terra)' }}
                 >
-                  删除
+                  {t('common.delete')}
                 </button>
               ) : (
                 <>
@@ -162,11 +164,11 @@ export function Cart() {
                     &yen;{(Number(item.product.price) * item.quantity).toFixed(2)}
                   </div>
                   <button
-                    onClick={() => { if (window.confirm('确认要删除此商品吗？')) removeMutation.mutate(item.id); }}
+                    onClick={() => { if (window.confirm(t('cart.confirmRemove'))) removeMutation.mutate(item.id); }}
                     className="text-sm hover:opacity-70 transition-opacity"
                     style={{ color: 'var(--color-ink-muted)' }}
                   >
-                    删除
+                    {t('common.delete')}
                   </button>
                 </>
               )}
@@ -180,14 +182,14 @@ export function Cart() {
         style={{ background: 'white', boxShadow: 'var(--shadow-card)' }}
       >
         <span className="text-sm" style={{ color: 'var(--color-ink-light)' }}>
-          共 {activeItems.length} 件商品
+          {t('cart.itemCount', { count: activeItems.length })}
         </span>
         <div className="flex items-center gap-4">
           <span className="text-xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-terra)' }}>
             &yen;{total.toFixed(2)}
           </span>
           <Link to="/checkout" className="btn-primary">
-            去结算
+            {t('cart.checkout')}
           </Link>
         </div>
       </div>

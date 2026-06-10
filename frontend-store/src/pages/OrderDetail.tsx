@@ -8,22 +8,24 @@ import {
   type Order,
   type OrderItemSnapshot,
 } from '../api/orders';
-
-const STATUS_MAP: Record<string, string> = {
-  PAID: '待发货',
-  SHIPPED: '已发货',
-  COMPLETED: '已完成',
-  CANCELLED: '已取消',
-  RETURN_PENDING: '售后中',
-  REFUNDED: '已退款',
-};
+import { useLanguage, getCurrentLang } from '../hooks/useLanguage';
 
 export function OrderDetail() {
   const { id } = useParams<{ id: string }>();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [rejectReason, setRejectReason] = useState('');
   const [showRejectForm, setShowRejectForm] = useState(false);
+
+  const STATUS_MAP: Record<string, string> = {
+    PAID: t('status.PAID'),
+    SHIPPED: t('status.SHIPPED'),
+    COMPLETED: t('status.COMPLETED'),
+    CANCELLED: t('status.CANCELLED'),
+    RETURN_PENDING: t('status.RETURN_PENDING'),
+    REFUNDED: t('status.REFUNDED'),
+  };
 
   const { data: order, isLoading, isError } = useQuery({
     queryKey: ['order', 'admin', id],
@@ -57,18 +59,19 @@ export function OrderDetail() {
     },
   });
 
-  // Reset mutation state when navigating to a different order
   useEffect(() => {
     shipMutation.reset();
     approveReturnMutation.reset();
     rejectReturnMutation.reset();
   }, [id]);
 
+  const locale = getCurrentLang() === 'en' ? 'en-US' : 'zh-CN';
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-32 gap-3">
         <div className="spinner" />
-        <p style={{ color: 'var(--color-slate-500)' }} className="text-xs">加载中...</p>
+        <p style={{ color: 'var(--color-slate-500)' }} className="text-xs">{t('common.loading')}</p>
       </div>
     );
   }
@@ -76,7 +79,7 @@ export function OrderDetail() {
   if (isError || !order) {
     return (
       <div className="text-center py-32">
-        <p style={{ color: 'var(--color-slate-500)' }}>订单不存在</p>
+        <p style={{ color: 'var(--color-slate-500)' }}>{t('adminOrder.notFound')}</p>
       </div>
     );
   }
@@ -88,7 +91,7 @@ export function OrderDetail() {
     shipMutation.error?.response?.data?.message ||
     approveReturnMutation.error?.response?.data?.message ||
     rejectReturnMutation.error?.response?.data?.message ||
-    '操作失败';
+    t('common.error');
 
   const cardStyle = {
     background: 'var(--color-slate-900)',
@@ -107,10 +110,10 @@ export function OrderDetail() {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
-          返回订单列表
+          {t('adminOrder.backToList')}
         </button>
       </div>
-      <h1 style={{ marginBottom: '1.25rem' }}>订单详情</h1>
+      <h1 style={{ marginBottom: '1.25rem' }}>{t('adminOrder.title')}</h1>
 
       <div className="p-6 space-y-4" style={cardStyle}>
         <div className="flex justify-between items-center">
@@ -123,17 +126,17 @@ export function OrderDetail() {
         </div>
 
         <div className="text-xs space-y-1.5" style={{ color: 'var(--color-slate-400)' }}>
-          <p>用户名：{o.user?.name || '-'}</p>
-          <p>邮箱：{o.user?.email || '-'}</p>
-          <p>收货人：{o.recipientName}</p>
-          <p>收货地址：{o.recipientAddress}</p>
-          <p>联系电话：{o.recipientPhone}</p>
-          {o.shippedAt && <p>发货时间：{new Date(o.shippedAt).toLocaleString('zh-CN')}</p>}
-          {o.refundedAt && <p>退款时间：{new Date(o.refundedAt).toLocaleString('zh-CN')}</p>}
+          <p>{t('adminOrder.userName')}{o.user?.name || '-'}</p>
+          <p>{t('adminOrder.email')}{o.user?.email || '-'}</p>
+          <p>{t('adminOrder.recipient')}{o.recipientName}</p>
+          <p>{t('adminOrder.address')}{o.recipientAddress}</p>
+          <p>{t('adminOrder.phone')}{o.recipientPhone}</p>
+          {o.shippedAt && <p>{t('adminOrder.shippedAt')}{new Date(o.shippedAt).toLocaleString(locale)}</p>}
+          {o.refundedAt && <p>{t('adminOrder.refundedAt')}{new Date(o.refundedAt).toLocaleString(locale)}</p>}
         </div>
 
         <div className="pt-4" style={{ borderTop: '1px solid var(--color-slate-800)' }}>
-          <h3 className="text-xs font-semibold mb-3" style={{ color: 'var(--color-slate-300)' }}>商品清单</h3>
+          <h3 className="text-xs font-semibold mb-3" style={{ color: 'var(--color-slate-300)' }}>{t('adminOrder.items')}</h3>
           {o.items?.map((item: OrderItemSnapshot) => (
             <div
               key={item.id}
@@ -148,7 +151,7 @@ export function OrderDetail() {
                   <img src={`/${item.productImage}`} alt={item.productName} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-[10px]" style={{ color: 'var(--color-slate-600)' }}>
-                    暂无
+                    {t('common.noImageShort')}
                   </div>
                 )}
               </div>
@@ -166,31 +169,25 @@ export function OrderDetail() {
         </div>
 
         <div className="pt-4 text-right" style={{ borderTop: '1px solid var(--color-slate-800)' }}>
-          <span className="text-xs" style={{ color: 'var(--color-slate-500)' }}>实付金额：</span>
+          <span className="text-xs" style={{ color: 'var(--color-slate-500)' }}>{t('adminOrder.total')}</span>
           <span className="text-xl font-bold" style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-amber)' }}>
             &yen;{Number(o.totalAmount).toFixed(2)}
           </span>
         </div>
 
         {o.returnReason && (
-          <div
-            className="rounded-[3px] p-3 text-xs"
-            style={{ background: 'var(--color-slate-850)' }}
-          >
-            <p style={{ color: 'var(--color-slate-400)' }}>退货原因：{o.returnReason}</p>
+          <div className="rounded-[3px] p-3 text-xs" style={{ background: 'var(--color-slate-850)' }}>
+            <p style={{ color: 'var(--color-slate-400)' }}>{t('adminOrder.returnReason')}{o.returnReason}</p>
             {o.returnRejectedReason && (
-              <p className="mt-1" style={{ color: 'var(--color-red-soft)' }}>拒绝原因：{o.returnRejectedReason}</p>
+              <p className="mt-1" style={{ color: 'var(--color-red-soft)' }}>{t('adminOrder.rejectReason')}{o.returnRejectedReason}</p>
             )}
-            <p className="mt-1" style={{ color: 'var(--color-slate-500)' }}>已申请 {o.returnAttempts}/3 次</p>
+            <p className="mt-1" style={{ color: 'var(--color-slate-500)' }}>{t('adminOrder.attempts', { current: o.returnAttempts, max: 3 })}</p>
           </div>
         )}
 
         {o.review && (
-          <div
-            className="rounded-[3px] p-3 text-xs"
-            style={{ background: 'var(--color-amber-bg)', border: '1px solid var(--color-amber-border)' }}
-          >
-            <p className="font-medium" style={{ color: 'var(--color-amber)' }}>用户评价</p>
+          <div className="rounded-[3px] p-3 text-xs" style={{ background: 'var(--color-amber-bg)', border: '1px solid var(--color-amber-border)' }}>
+            <p className="font-medium" style={{ color: 'var(--color-amber)' }}>{t('adminOrder.userReview')}</p>
             <p style={{ color: 'var(--color-amber-light)' }} className="mt-0.5">
               {'★'.repeat(o.review.rating)}{'☆'.repeat(5 - o.review.rating)}
             </p>
@@ -202,25 +199,25 @@ export function OrderDetail() {
       <div className="mt-4 flex flex-wrap gap-3">
         {canShip && (
           <button
-            onClick={() => { if (window.confirm('确认发货？')) shipMutation.mutate(); }}
+            onClick={() => { if (window.confirm(t('adminOrder.confirmShip'))) shipMutation.mutate(); }}
             disabled={shipMutation.isPending}
             className="btn-primary"
           >
-            {shipMutation.isPending ? '发货中...' : '确认发货'}
+            {shipMutation.isPending ? t('adminOrder.shipping') : t('adminOrder.shipBtn')}
           </button>
         )}
         {canHandleReturn && !showRejectForm && (
           <>
             <button
-              onClick={() => { if (window.confirm('确认同意退货并退款？')) approveReturnMutation.mutate(); }}
+              onClick={() => { if (window.confirm(t('adminOrder.confirmApprove'))) approveReturnMutation.mutate(); }}
               disabled={approveReturnMutation.isPending}
               className="btn-primary"
               style={{ background: 'var(--color-emerald)', color: 'var(--color-slate-950)' }}
             >
-              {approveReturnMutation.isPending ? '处理中...' : '同意退货'}
+              {approveReturnMutation.isPending ? t('common.processing') : t('adminOrder.approveReturn')}
             </button>
             <button onClick={() => setShowRejectForm(true)} className="btn-danger">
-              拒绝退货
+              {t('adminOrder.rejectReturn')}
             </button>
           </>
         )}
@@ -228,11 +225,11 @@ export function OrderDetail() {
 
       {showRejectForm && (
         <div className="mt-4 p-4" style={cardStyle}>
-          <h3 className="text-xs font-semibold mb-3" style={{ color: 'var(--color-slate-300)' }}>拒绝退货</h3>
+          <h3 className="text-xs font-semibold mb-3" style={{ color: 'var(--color-slate-300)' }}>{t('adminOrder.rejectFormTitle')}</h3>
           <textarea
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}
-            placeholder="拒绝原因（可选）"
+            placeholder={t('adminOrder.rejectPlaceholder')}
             className="input-field"
             rows={2}
           />
@@ -241,14 +238,14 @@ export function OrderDetail() {
               onClick={() => { setShowRejectForm(false); setRejectReason(''); }}
               className="btn-ghost"
             >
-              取消
+              {t('common.cancel')}
             </button>
             <button
               onClick={() => rejectReturnMutation.mutate()}
               disabled={rejectReturnMutation.isPending}
               className="btn-danger"
             >
-              {rejectReturnMutation.isPending ? '处理中...' : '确认拒绝'}
+              {rejectReturnMutation.isPending ? t('common.processing') : t('adminOrder.confirmReject')}
             </button>
           </div>
         </div>

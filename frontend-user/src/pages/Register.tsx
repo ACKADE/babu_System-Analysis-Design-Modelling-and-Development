@@ -3,8 +3,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { authApi } from '../api/auth';
 import { useAuth } from '../hooks/useAuth';
+import { useLanguage } from '../hooks/useLanguage';
 
 export function Register() {
+  const { t } = useLanguage();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -28,8 +30,8 @@ export function Register() {
     <div className="min-h-[70vh] flex items-center justify-center">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.75rem' }}>创建账户</h1>
-          <p className="text-sm mt-2" style={{ color: 'var(--color-ink-muted)' }}>注册即可开始购物</p>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.75rem' }}>{t('auth.createAccount')}</h1>
+          <p className="text-sm mt-2" style={{ color: 'var(--color-ink-muted)' }}>{t('auth.registerSubtitle')}</p>
         </div>
 
         {successMsg && (
@@ -45,7 +47,7 @@ export function Register() {
             className="p-3 rounded-[3px] mb-5 text-sm font-medium"
             style={{ background: 'var(--color-terra-bg)', color: 'var(--color-terra)' }}
           >
-            {(registerMutation.error as any)?.response?.data?.message || '注册失败'}
+            {(registerMutation.error as any)?.response?.data?.message || t('auth.registerFailed')}
           </div>
         )}
 
@@ -54,7 +56,7 @@ export function Register() {
           className="space-y-4"
         >
           <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-ink-light)' }}>用户名</label>
+            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-ink-light)' }}>{t('auth.username')}</label>
             <input
               type="text"
               value={name}
@@ -65,7 +67,7 @@ export function Register() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-ink-light)' }}>邮箱</label>
+            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-ink-light)' }}>{t('auth.email')}</label>
             <input
               type="email"
               value={email}
@@ -76,7 +78,7 @@ export function Register() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-ink-light)' }}>密码</label>
+            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-ink-light)' }}>{t('auth.password')}</label>
             <input
               type="password"
               value={password}
@@ -92,11 +94,11 @@ export function Register() {
             disabled={registerMutation.isPending}
             className="btn-primary w-full"
           >
-            {registerMutation.isPending ? '注册中...' : '注册'}
+            {registerMutation.isPending ? t('auth.registering') : t('auth.register')}
           </button>
         </form>
         <p className="mt-5 text-center text-sm" style={{ color: 'var(--color-ink-muted)' }}>
-          已有账号？<Link to="/login" style={{ color: 'var(--color-terra)' }} className="hover:opacity-70 font-medium">立即登录</Link>
+          {t('auth.hasAccount')}<Link to="/login" style={{ color: 'var(--color-terra)' }} className="hover:opacity-70 font-medium">{t('auth.loginNow')}</Link>
         </p>
       </div>
     </div>

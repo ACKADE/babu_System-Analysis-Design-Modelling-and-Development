@@ -1,7 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { dashboardApi } from '../api/dashboard';
+import { useLanguage } from '../hooks/useLanguage';
 
 export function Dashboard() {
+  const { t } = useLanguage();
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ['dashboard'],
     queryFn: async () => { const res = await dashboardApi.get(); return res.data; },
@@ -11,7 +14,7 @@ export function Dashboard() {
     return (
       <div className="flex flex-col items-center justify-center py-32 gap-3">
         <div className="spinner" />
-        <p style={{ color: 'var(--color-slate-500)' }} className="text-xs">加载中...</p>
+        <p style={{ color: 'var(--color-slate-500)' }} className="text-xs">{t('common.loading')}</p>
       </div>
     );
   }
@@ -19,23 +22,23 @@ export function Dashboard() {
   if (isError) {
     return (
       <div className="text-center py-32">
-        <p style={{ color: 'var(--color-red-soft)' }}>加载统计数据失败</p>
+        <p style={{ color: 'var(--color-red-soft)' }}>{t('dashboard.loadFailed')}</p>
       </div>
     );
   }
 
   const stats = [
-    { label: '商品总数', value: data?.totalProducts ?? 0 },
-    { label: '在售商品', value: data?.activeProducts ?? 0 },
-    { label: '待发货订单', value: data?.pendingShipOrders ?? 0, highlight: (data?.pendingShipOrders ?? 0) > 0 },
-    { label: '售后中', value: data?.returnPendingCount ?? 0, highlight: (data?.returnPendingCount ?? 0) > 0 },
-    { label: '本月订单', value: data?.monthlyOrderCount ?? 0 },
-    { label: '本月销售额', value: `¥${Number(data?.monthlySales ?? 0).toFixed(2)}` },
+    { label: t('dashboard.totalProducts'), value: data?.totalProducts ?? 0 },
+    { label: t('dashboard.activeProducts'), value: data?.activeProducts ?? 0 },
+    { label: t('dashboard.pendingShip'), value: data?.pendingShipOrders ?? 0, highlight: (data?.pendingShipOrders ?? 0) > 0 },
+    { label: t('dashboard.returnPending'), value: data?.returnPendingCount ?? 0, highlight: (data?.returnPendingCount ?? 0) > 0 },
+    { label: t('dashboard.monthlyOrders'), value: data?.monthlyOrderCount ?? 0 },
+    { label: t('dashboard.monthlySales'), value: `¥${Number(data?.monthlySales ?? 0).toFixed(2)}` },
   ];
 
   return (
     <div>
-      <h1 style={{ marginBottom: '1.5rem' }}>仪表盘</h1>
+      <h1 style={{ marginBottom: '1.5rem' }}>{t('dashboard.title')}</h1>
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         {stats.map((stat) => (
           <div

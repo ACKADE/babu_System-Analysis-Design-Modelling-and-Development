@@ -1,8 +1,10 @@
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productsApi, type Product } from '../api/products';
+import { useLanguage } from '../hooks/useLanguage';
 
 export function ProductManage() {
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
 
   const { data: products, isLoading, isError } = useQuery({
@@ -19,7 +21,7 @@ export function ProductManage() {
     return (
       <div className="flex flex-col items-center justify-center py-32 gap-3">
         <div className="spinner" />
-        <p style={{ color: 'var(--color-slate-500)' }} className="text-xs">加载中...</p>
+        <p style={{ color: 'var(--color-slate-500)' }} className="text-xs">{t('common.loading')}</p>
       </div>
     );
   }
@@ -27,7 +29,7 @@ export function ProductManage() {
   if (isError) {
     return (
       <div className="text-center py-32">
-        <p style={{ color: 'var(--color-red-soft)' }}>加载商品失败</p>
+        <p style={{ color: 'var(--color-red-soft)' }}>{t('productManage.loadFailed')}</p>
       </div>
     );
   }
@@ -35,9 +37,9 @@ export function ProductManage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
-        <h1>商品管理</h1>
+        <h1>{t('productManage.title')}</h1>
         <Link to="/products/new" className="btn-primary text-xs">
-          新增商品
+          {t('productManage.add')}
         </Link>
       </div>
 
@@ -46,7 +48,7 @@ export function ProductManage() {
           className="text-center py-32 rounded-[4px]"
           style={{ color: 'var(--color-slate-500)', background: 'var(--color-slate-900)', border: '1px solid var(--color-slate-800)' }}
         >
-          暂无商品
+          {t('productManage.empty')}
         </div>
       ) : (
         <div
@@ -56,11 +58,11 @@ export function ProductManage() {
           <table className="table-dark">
             <thead>
               <tr>
-                <th>商品</th>
-                <th>价格</th>
-                <th>库存</th>
-                <th>状态</th>
-                <th className="text-right">操作</th>
+                <th>{t('productManage.column.product')}</th>
+                <th>{t('productManage.column.price')}</th>
+                <th>{t('productManage.column.stock')}</th>
+                <th>{t('productManage.column.status')}</th>
+                <th className="text-right">{t('productManage.column.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -76,7 +78,7 @@ export function ProductManage() {
                           <img src={`/${product.thumbnailUrl}`} alt={product.name} className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-[10px]" style={{ color: 'var(--color-slate-600)' }}>
-                            暂无
+                            {t('common.noImageShort')}
                           </div>
                         )}
                       </div>
@@ -99,7 +101,7 @@ export function ProductManage() {
                         background: product.isActive ? 'var(--color-emerald-bg)' : 'var(--color-slate-800)',
                       }}
                     >
-                      {product.isActive ? '上架' : '下架'}
+                      {product.isActive ? t('productManage.active') : t('productManage.inactive')}
                     </span>
                   </td>
                   <td className="text-right">
@@ -109,14 +111,14 @@ export function ProductManage() {
                         className="text-xs hover:opacity-70 transition-opacity"
                         style={{ color: 'var(--color-amber)' }}
                       >
-                        编辑
+                        {t('productManage.edit')}
                       </Link>
                       <button
                         onClick={() => toggleMutation.mutate(product.id)}
                         className="text-xs hover:opacity-70 transition-opacity"
                         style={{ color: product.isActive ? 'var(--color-red-soft)' : 'var(--color-emerald)' }}
                       >
-                        {product.isActive ? '下架' : '上架'}
+                        {product.isActive ? t('productManage.delist') : t('productManage.list')}
                       </button>
                     </div>
                   </td>

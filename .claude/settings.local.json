@@ -36,7 +36,12 @@
       "Bash(DOCKER_BUILDKIT=0 docker compose up -d --build store-frontend)",
       "Bash(DOCKER_BUILDKIT=0 docker compose up -d --build user-frontend store-frontend)",
       "Bash(DOCKER_BUILDKIT=0 docker compose up -d --build user-frontend)",
-      "Bash(python -c \"import sys,json; data=json.load\\(sys.stdin\\); print\\(f'父分类: {len\\(data\\)} 个, 子分类: {sum\\(len\\(c[\\\\\"children\\\\\"]\\) for c in data\\)} 个'\\); [print\\(f'  {c[\\\\\"name\\\\\"]}: {[ch[\\\\\"name\\\\\"] for ch in c[\\\\\"children\\\\\"]]}'\\) for c in data]\")"
+      "Bash(python -c \"import sys,json; data=json.load\\(sys.stdin\\); print\\(f'父分类: {len\\(data\\)} 个, 子分类: {sum\\(len\\(c[\\\\\"children\\\\\"]\\) for c in data\\)} 个'\\); [print\\(f'  {c[\\\\\"name\\\\\"]}: {[ch[\\\\\"name\\\\\"] for ch in c[\\\\\"children\\\\\"]]}'\\) for c in data]\")",
+      "Bash(taskkill //F //IM node.exe)",
+      "Bash(npm run *)",
+      "Bash(docker exec ecommerce-user-frontend *)",
+      "Bash(docker exec ecommerce-store-frontend *)",
+      "Bash(docker builder *)"
     ]
   }
 }

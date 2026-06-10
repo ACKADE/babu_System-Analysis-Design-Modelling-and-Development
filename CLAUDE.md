@@ -19,15 +19,16 @@ A **small e-commerce demo platform** (course project) with two frontends (user-f
 | Backend | Node.js 20+, Express 4, TypeScript 5 |
 | ORM | Prisma 5 (MySQL 8) |
 | Auth | JWT dual-token (Access 15min + Refresh 7d) |
+| Security | helmet + express-rate-limit |
 | Validation | zod (schema → middleware → routes) |
 | File upload | multer (5MB limit, local disk, images only) |
 | API docs | swagger-jsdoc + swagger-ui-express |
-| Testing | Jest + Supertest (separate test DB) |
-| Frontend (both) | React 18, Vite 5, TypeScript 5 |
-| Styling | Tailwind CSS 3 |
+| Testing | Jest + Supertest (tests in `backend/tests/`) |
+| Frontend (both) | React 19, Vite 8, TypeScript 6 |
+| Styling | Tailwind CSS 4 (`@tailwindcss/vite` plugin) |
 | Data fetching | TanStack Query 5 + axios |
-| Routing | React Router v6 |
-| Deployment | Docker Compose |
+| Routing | React Router v7 |
+| Deployment | Docker Compose (node:20-alpine + nginx for frontends) |
 
 ## Project Structure
 
@@ -36,16 +37,18 @@ project-root/
 ├── docker-compose.yml       # 4 services: MySQL + backend + user-frontend + store-frontend
 ├── backend/
 │   ├── prisma/schema.prisma # 8 models (see below)
-│   ├── prisma/seed.ts
+│   ├── prisma/seed.ts       # 48 categories + admin user seed
 │   ├── src/
 │   │   ├── index.ts         # Entry point (dotenv, listen)
-│   │   ├── app.ts           # Express setup (cors, json, routes, error handler)
+│   │   ├── app.ts           # Express setup (helmet, cors, json, routes, error handler)
 │   │   ├── swagger.ts
 │   │   ├── lib/prisma.ts    # Singleton PrismaClient
 │   │   ├── lib/jwt.ts       # sign/verify for access + refresh tokens
 │   │   ├── routes/          # auth, products, cart, orders, categories, reviews, dashboard
 │   │   ├── middleware/      # auth (authenticate, requireRole), validate (zod), errorHandler, upload
-│   │   └── schemas/         # zod schemas for auth, product, order, cart
+│   │   ├── schemas/         # zod schemas for auth, product, order, cart
+│   │   └── services/        # orderLifecycle (7-day auto-completion)
+│   ├── tests/               # Jest test files (separate from src/)
 │   └── uploads/             # Image uploads (mounted as volume)
 ├── frontend-user/           # Customer-facing store (port 5173)
 │   └── src/
@@ -65,10 +68,26 @@ project-root/
 | Backend API + Swagger | 3000 |
 | User frontend | 5173 |
 | Store frontend | 5174 |
-| MySQL | 3306 |
+| MySQL (Docker) | 3306 (container) / 13306 (host) |
 | phpMyAdmin (optional) | 8080 |
 
 Each Vite frontend proxies `/api` and `/uploads` to `localhost:3000`.
+
+## Environment Variables
+
+All config lives in `backend/.env` (gitignored, copy from `.env.example`):
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | MySQL connection string (host differs: `localhost:13306` local, `mysql:3306` Docker) |
+| `JWT_ACCESS_SECRET` | Access token signing secret |
+| `JWT_REFRESH_SECRET` | Refresh token signing secret |
+| `JWT_ACCESS_EXPIRES_IN` | Access token TTL (default `15m`) |
+| `JWT_REFRESH_EXPIRES_IN` | Refresh token TTL (default `7d`) |
+| `PORT` | Express listen port (default `3000`) |
+
+**Local dev**: Start MySQL via Docker (`docker compose up -d mysql`), then run `npm run dev` in backend. The DB is exposed on host port 13306.
+**Full Docker**: `docker compose up -d` starts everything — the backend container connects to MySQL via internal network at `mysql:3306`.
 
 ## Commands
 
@@ -78,7 +97,9 @@ npm install              # Install dependencies
 npm run dev              # Start dev server (tsx watch, port 3000)
 npm run build            # Compile TypeScript (tsc)
 npm start                # Run built JS
-npm test                 # Jest (passWithNoTests enabled)
+npm test                 # Run all Jest tests
+npx jest tests/health.test.ts          # Run single test file
+npx jest -t "returns ok"               # Run tests matching pattern
 npx prisma db push       # Push schema to DB without migrations
 npx prisma db seed       # Seed admin user (admin@shop.com / admin123)
 npx prisma studio        # Open Prisma Studio GUI
@@ -86,7 +107,8 @@ npx prisma studio        # Open Prisma Studio GUI
 # Frontend (cd frontend-user or cd frontend-store)
 npm install
 npm run dev              # Vite HMR dev server
-npm run build            # Production build
+npm run build            # TypeScript check + Vite production build
+npm run lint             # ESLint
 npm run preview          # Preview production build
 
 # Docker
@@ -120,6 +142,8 @@ RETURN_PENDING → COMPLETED (admin reject, returnAttempts +1)
 ```
 
 CANCELLED and REFUNDED are terminal states. Return requests capped at 3 attempts.
+
+**7-day auto-completion**: `services/orderLifecycle.ts` — when querying orders, any SHIPPED order with `shippedAt` ≥ 7 days ago is automatically transitioned to COMPLETED in-place before the response is returned. No cron job needed; the check runs on every order read.
 
 ## API Pattern
 
@@ -169,6 +193,18 @@ useEffect(() => {
 ```
 
 **Error display is mandatory**: Every mutation error MUST render visible feedback. `onSuccess` alone is not enough — a silent failure makes the user think the action didn't register.
+
+## Tailwind CSS v4
+
+This project uses **Tailwind CSS v4** which differs significantly from v3:
+
+- **No `tailwind.config.js`** — configuration is done in CSS via `@theme { ... }` block in `src/index.css`
+- **Vite plugin**: `@tailwindcss/vite` (not the PostCSS plugin)
+- **Import**: `@import "tailwindcss"` (not `@tailwind base/components/utilities`)
+- Custom design tokens (colors, fonts, shadows) are defined as CSS custom properties in `@theme`
+- Utility class names remain the same as v3 — no change to the HTML/DOM layer
+
+Both frontends define their own theme tokens (customer-facing warm paper theme vs admin dark professional theme).
 
 ## Image Handling
 

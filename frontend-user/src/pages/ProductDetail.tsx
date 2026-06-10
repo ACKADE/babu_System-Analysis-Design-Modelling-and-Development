@@ -5,10 +5,12 @@ import { productsApi } from '../api/products';
 import { cartApi } from '../api/cart';
 import { reviewsApi } from '../api/reviews';
 import { useAuth } from '../hooks/useAuth';
+import { useLanguage, getCurrentLang } from '../hooks/useLanguage';
 
 export function ProductDetail() {
   const { id } = useParams<{ id: string }>();
   const { isLoggedIn } = useAuth();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [quantity, setQuantity] = useState(1);
@@ -30,7 +32,7 @@ export function ProductDetail() {
     mutationFn: () => cartApi.add(Number(id), quantity),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cart'] });
-      setAddedMsg(`已添加 ${quantity} 件到购物车`);
+      setAddedMsg(t('product.addedToCart', { count: quantity }));
       setTimeout(() => setAddedMsg(''), 3000);
     },
   });
@@ -39,7 +41,7 @@ export function ProductDetail() {
     return (
       <div className="flex flex-col items-center justify-center py-32 gap-3">
         <div className="spinner" />
-        <p style={{ color: 'var(--color-ink-muted)' }} className="text-sm">加载中...</p>
+        <p style={{ color: 'var(--color-ink-muted)' }} className="text-sm">{t('common.loading')}</p>
       </div>
     );
   }
@@ -47,11 +49,13 @@ export function ProductDetail() {
   if (isError || !product) {
     return (
       <div className="text-center py-32">
-        <p style={{ color: 'var(--color-ink-muted)' }} className="text-lg mb-4">商品不存在</p>
-        <Link to="/" className="btn-ghost">返回商品列表</Link>
+        <p style={{ color: 'var(--color-ink-muted)' }} className="text-lg mb-4">{t('product.notFound')}</p>
+        <Link to="/" className="btn-ghost">{t('product.backToList')}</Link>
       </div>
     );
   }
+
+  const locale = getCurrentLang() === 'en' ? 'en-US' : 'zh-CN';
 
   return (
     <div className="page-enter">
@@ -64,10 +68,10 @@ export function ProductDetail() {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
-          返回
+          {t('common.back')}
         </button>
         <nav className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--color-ink-muted)' }}>
-          <Link to="/" className="hover:opacity-70 transition-opacity">全部商品</Link>
+          <Link to="/" className="hover:opacity-70 transition-opacity">{t('product.allProducts')}</Link>
           <span>/</span>
           <span style={{ color: 'var(--color-ink)' }}>{product.name}</span>
         </nav>
@@ -80,7 +84,7 @@ export function ProductDetail() {
           {product.imageUrl ? (
             <img src={`/${product.imageUrl}`} alt={product.name} className="w-full h-full object-contain" />
           ) : (
-            <span style={{ color: 'var(--color-ink-muted)' }} className="text-sm">暂无图片</span>
+            <span style={{ color: 'var(--color-ink-muted)' }} className="text-sm">{t('common.noImage')}</span>
           )}
         </div>
 
@@ -95,7 +99,7 @@ export function ProductDetail() {
           </div>
 
           <p className="mt-3 text-sm" style={{ color: product.stock > 0 ? 'var(--color-sage)' : 'var(--color-terra)' }}>
-            {product.stock > 0 ? `库存 ${product.stock} 件` : '暂时缺货'}
+            {product.stock > 0 ? t('product.stockCount', { count: product.stock }) : t('product.outOfStock')}
           </p>
 
           <div className="mt-7 flex items-center gap-3">
@@ -133,11 +137,11 @@ export function ProductDetail() {
                 disabled={product.stock === 0 || addCartMutation.isPending}
                 className="btn-primary flex-1"
               >
-                {product.stock === 0 ? '库存不足' : addCartMutation.isPending ? '添加中...' : '加入购物车'}
+                {product.stock === 0 ? t('product.insufficientStock') : addCartMutation.isPending ? t('product.adding') : t('product.addToCart')}
               </button>
             ) : (
               <Link to="/login" className="btn-primary flex-1 text-center">
-                登录后购买
+                {t('product.loginToBuy')}
               </Link>
             )}
           </div>
@@ -147,12 +151,12 @@ export function ProductDetail() {
           )}
           {addCartMutation.isError && (
             <p className="mt-3 text-sm" style={{ color: 'var(--color-terra)' }}>
-              {(addCartMutation.error as any)?.response?.data?.message || '添加到购物车失败'}
+              {(addCartMutation.error as any)?.response?.data?.message || t('product.addToCartFailed')}
             </p>
           )}
 
           <div className="mt-8 pt-8" style={{ borderTop: '1px solid var(--color-paper-dark)' }}>
-            <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--color-ink)' }}>商品描述</h3>
+            <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--color-ink)' }}>{t('product.description')}</h3>
             <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--color-ink-light)' }}>
               {product.description}
             </p>
@@ -163,7 +167,7 @@ export function ProductDetail() {
       {reviews && reviews.length > 0 && (
         <div className="mt-14">
           <h2 className="mb-6" style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem' }}>
-            商品评价 <span style={{ color: 'var(--color-ink-muted)', fontSize: '0.9rem' }}>({reviews.length})</span>
+            {t('product.reviews')} <span style={{ color: 'var(--color-ink-muted)', fontSize: '0.9rem' }}>{t('product.reviewCount', { count: reviews.length })}</span>
           </h2>
           <div className="space-y-4">
             {reviews.map((review: any, idx: number) => (
@@ -178,7 +182,7 @@ export function ProductDetail() {
               >
                 <div className="flex items-center justify-between">
                   <span className="font-medium text-sm" style={{ color: 'var(--color-ink)' }}>
-                    {review.user?.name || '匿名'}
+                    {review.user?.name || t('common.anonymous')}
                   </span>
                   <span style={{ color: 'var(--color-gold)', fontSize: '0.85rem', letterSpacing: '1px' }}>
                     {'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}
@@ -188,7 +192,7 @@ export function ProductDetail() {
                   <p className="text-sm mt-2 leading-relaxed" style={{ color: 'var(--color-ink-light)' }}>{review.content}</p>
                 )}
                 <p className="text-xs mt-2" style={{ color: 'var(--color-ink-muted)' }}>
-                  {new Date(review.createdAt).toLocaleDateString('zh-CN')}
+                  {new Date(review.createdAt).toLocaleDateString(locale)}
                 </p>
               </div>
             ))}

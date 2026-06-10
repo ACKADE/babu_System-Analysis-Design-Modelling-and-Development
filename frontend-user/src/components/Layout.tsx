@@ -3,9 +3,11 @@ import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { cartApi, type CartItem } from '../api/cart';
 import { useAuth } from '../hooks/useAuth';
+import { useLanguage } from '../hooks/useLanguage';
 
 export function Layout() {
   const { user, isLoggedIn, logout } = useAuth();
+  const { lang, t, setLang } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -40,6 +42,10 @@ export function Layout() {
     return location.pathname.startsWith(path);
   };
 
+  const toggleLang = () => {
+    setLang(lang === 'zh' ? 'en' : 'zh');
+  };
+
   return (
     <div className="min-h-screen flex flex-col paper-texture" style={{ background: 'var(--color-paper)' }}>
       <header
@@ -55,16 +61,16 @@ export function Layout() {
             className="text-xl tracking-tight"
             style={{ fontFamily: 'var(--font-display)', color: 'var(--color-ink)' }}
           >
-            简易商城
+            {t('nav.title')}
           </Link>
           <nav className="flex items-center gap-6 text-sm">
             <Link to="/" className={`nav-link ${isActive('/') ? 'active' : ''}`}>
-              商品
+              {t('nav.products')}
             </Link>
             {isLoggedIn && (
               <>
                 <Link to="/cart" className={`nav-link relative ${isActive('/cart') ? 'active' : ''}`}>
-                  购物车
+                  {t('nav.cart')}
                   {cartCount > 0 && (
                     <span
                       className="absolute -top-2 -right-3.5 text-white text-[11px] rounded-full flex items-center justify-center font-medium"
@@ -75,7 +81,7 @@ export function Layout() {
                   )}
                 </Link>
                 <Link to="/orders" className={`nav-link ${isActive('/orders') ? 'active' : ''}`}>
-                  我的订单
+                  {t('nav.myOrders')}
                 </Link>
               </>
             )}
@@ -104,14 +110,14 @@ export function Layout() {
                       className="block px-4 py-2 text-sm hover:opacity-70 transition-opacity"
                       style={{ color: 'var(--color-ink-light)' }}
                     >
-                      个人中心
+                      {t('nav.profile')}
                     </Link>
                     <button
                       onClick={handleLogout}
                       className="block w-full text-left px-4 py-2 text-sm hover:opacity-70 transition-opacity"
                       style={{ color: 'var(--color-terra)' }}
                     >
-                      退出登录
+                      {t('nav.logout')}
                     </button>
                   </div>
                 )}
@@ -122,9 +128,36 @@ export function Layout() {
                 className="text-sm font-medium hover:opacity-80 transition-opacity"
                 style={{ color: 'var(--color-terra)' }}
               >
-                登录
+                {t('nav.login')}
               </Link>
             )}
+
+            {/* Language Toggle */}
+            <button
+              onClick={toggleLang}
+              className="flex items-center text-[11px] font-semibold tracking-wide uppercase rounded-[3px] px-2.5 py-1 transition-all duration-200 select-none"
+              style={{
+                color: 'var(--color-ink)',
+                border: '1px solid var(--color-ink-light)',
+                background: 'var(--color-paper-warm)',
+                cursor: 'pointer',
+                letterSpacing: '0.04em',
+                lineHeight: 1,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'white';
+                e.currentTarget.style.borderColor = 'var(--color-terra)';
+                e.currentTarget.style.background = 'var(--color-terra)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--color-ink)';
+                e.currentTarget.style.borderColor = 'var(--color-ink-light)';
+                e.currentTarget.style.background = 'var(--color-paper-warm)';
+              }}
+              title={lang === 'zh' ? 'Switch to English' : '切换到中文'}
+            >
+              {lang === 'zh' ? 'EN' : '中'}
+            </button>
           </nav>
         </div>
       </header>
@@ -132,7 +165,7 @@ export function Layout() {
         <Outlet />
       </main>
       <footer className="border-t py-6 text-center" style={{ borderColor: 'var(--color-paper-dark)' }}>
-        <p className="text-xs" style={{ color: 'var(--color-ink-muted)' }}>简易商城 &copy; {new Date().getFullYear()}</p>
+        <p className="text-xs" style={{ color: 'var(--color-ink-muted)' }}>{t('footer.copyright')} &copy; {new Date().getFullYear()}</p>
       </footer>
     </div>
   );
