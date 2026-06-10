@@ -4,8 +4,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
 import { cartApi, type CartItem } from '../api/cart';
 import { ordersApi, type ApiMessageError, type Order } from '../api/orders';
+import { useLanguage } from '../hooks/useLanguage';
 
 export function Checkout() {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [recipientName, setRecipientName] = useState('');
@@ -39,7 +41,7 @@ export function Checkout() {
     return (
       <div className="flex flex-col items-center justify-center py-32 gap-3">
         <div className="spinner" />
-        <p style={{ color: 'var(--color-ink-muted)' }} className="text-sm">加载中...</p>
+        <p style={{ color: 'var(--color-ink-muted)' }} className="text-sm">{t('common.loading')}</p>
       </div>
     );
   }
@@ -47,23 +49,23 @@ export function Checkout() {
   if (items.length === 0) {
     return (
       <div className="text-center py-32">
-        <p style={{ color: 'var(--color-ink-muted)' }} className="text-lg">购物车中无可结算商品</p>
+        <p style={{ color: 'var(--color-ink-muted)' }} className="text-lg">{t('cart.noCheckoutItems')}</p>
       </div>
     );
   }
 
   return (
     <div className="max-w-2xl mx-auto page-enter">
-      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', marginBottom: '1.5rem' }}>确认订单</h1>
+      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', marginBottom: '1.5rem' }}>{t('checkout.title')}</h1>
 
       <div
         className="rounded-[3px] p-6 mb-4"
         style={{ background: 'white', boxShadow: 'var(--shadow-card)' }}
       >
-        <h2 className="text-sm font-semibold mb-5" style={{ color: 'var(--color-ink)' }}>收货信息</h2>
+        <h2 className="text-sm font-semibold mb-5" style={{ color: 'var(--color-ink)' }}>{t('checkout.shippingInfo')}</h2>
         <form id="checkout-form" onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-ink-light)' }}>收货人</label>
+            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-ink-light)' }}>{t('checkout.recipientName')}</label>
             <input
               type="text"
               value={recipientName}
@@ -73,7 +75,7 @@ export function Checkout() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-ink-light)' }}>收货地址</label>
+            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-ink-light)' }}>{t('checkout.recipientAddress')}</label>
             <input
               type="text"
               value={recipientAddress}
@@ -83,7 +85,7 @@ export function Checkout() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-ink-light)' }}>联系电话</label>
+            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-ink-light)' }}>{t('checkout.recipientPhone')}</label>
             <input
               type="text"
               value={recipientPhone}
@@ -91,7 +93,7 @@ export function Checkout() {
               className="input-field"
               required
               pattern="[0-9]{7,15}"
-              title="7-15位数字"
+              title={t('checkout.phoneHint')}
             />
           </div>
         </form>
@@ -101,7 +103,7 @@ export function Checkout() {
         className="rounded-[3px] p-6 mb-4"
         style={{ background: 'white', boxShadow: 'var(--shadow-card)' }}
       >
-        <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--color-ink)' }}>商品清单</h2>
+        <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--color-ink)' }}>{t('checkout.itemsList')}</h2>
         {items.map((item: CartItem) => (
           <div
             key={item.id}
@@ -118,7 +120,7 @@ export function Checkout() {
           className="flex justify-between items-center mt-4 pt-4"
           style={{ borderTop: '1px solid var(--color-paper-dark)' }}
         >
-          <span className="font-medium text-sm" style={{ color: 'var(--color-ink)' }}>合计</span>
+          <span className="font-medium text-sm" style={{ color: 'var(--color-ink)' }}>{t('checkout.total')}</span>
           <span className="text-xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-terra)' }}>
             &yen;{total.toFixed(2)}
           </span>
@@ -130,7 +132,7 @@ export function Checkout() {
           className="p-3 rounded-[3px] mb-4 text-sm font-medium"
           style={{ background: 'var(--color-terra-bg)', color: 'var(--color-terra)' }}
         >
-          {createOrderMutation.error?.response?.data?.message || '提交订单失败'}
+          {createOrderMutation.error?.response?.data?.message || t('checkout.submitFailed')}
         </div>
       )}
 
@@ -140,7 +142,7 @@ export function Checkout() {
         disabled={createOrderMutation.isPending}
         className="btn-primary w-full text-base py-3"
       >
-        {createOrderMutation.isPending ? '提交中...' : '提交订单并支付'}
+        {createOrderMutation.isPending ? t('checkout.submitting') : t('checkout.placeOrder')}
       </button>
     </div>
   );

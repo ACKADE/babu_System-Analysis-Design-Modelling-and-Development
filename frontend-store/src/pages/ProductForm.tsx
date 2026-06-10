@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productsApi } from '../api/products';
 import { categoriesApi } from '../api/categories';
+import { useLanguage } from '../hooks/useLanguage';
 
 function FileUploadZone({
   label, accept = 'image/*', preview, onFile, hint,
@@ -14,6 +15,7 @@ function FileUploadZone({
   hint: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const { t } = useLanguage();
 
   const handleClick = () => inputRef.current?.click();
 
@@ -43,7 +45,7 @@ function FileUploadZone({
         <div style={{ position: 'relative', display: 'inline-block' }}>
           <img
             src={preview}
-            alt={`${label}预览`}
+            alt={`${label} ${t('productForm.preview')}`}
             className="w-28 h-28 object-cover rounded-[4px] cursor-pointer"
             style={{ border: '1px solid var(--color-slate-700)' }}
             onClick={handleClick}
@@ -61,7 +63,7 @@ function FileUploadZone({
             }}
             className="absolute -top-2 -right-2 w-5 h-5 flex items-center justify-center rounded-full text-[10px]"
             style={{ background: 'var(--color-slate-700)', color: 'var(--color-slate-300)' }}
-            title="移除图片"
+            title={t('productForm.removeImage')}
           >
             &times;
           </button>
@@ -82,7 +84,7 @@ function FileUploadZone({
             {hint}
           </span>
           <span className="text-[10px] mt-1" style={{ color: 'var(--color-slate-600)' }}>
-            支持 JPG / PNG / WebP / GIF
+            {t('productForm.fileTypes')}
           </span>
         </div>
       )}
@@ -99,6 +101,7 @@ function FileUploadZone({
 export function ProductForm() {
   const { id } = useParams<{ id: string }>();
   const isEdit = !!id;
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -189,14 +192,14 @@ export function ProductForm() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h1 style={{ marginBottom: '1.25rem' }}>{isEdit ? '编辑商品' : '新增商品'}</h1>
+      <h1 style={{ marginBottom: '1.25rem' }}>{isEdit ? t('productForm.edit') : t('productForm.create')}</h1>
 
       {error && (
         <div
           className="p-3 rounded-[4px] mb-4 text-xs font-medium"
           style={{ background: 'var(--color-red-bg)', color: 'var(--color-red-soft)' }}
         >
-          {error?.response?.data?.message || '操作失败'}
+          {error?.response?.data?.message || t('common.error')}
         </div>
       )}
 
@@ -206,33 +209,33 @@ export function ProductForm() {
         style={{ background: 'var(--color-slate-900)', border: '1px solid var(--color-slate-800)' }}
       >
         <div>
-          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-slate-400)' }}>商品名称 *</label>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-slate-400)' }}>{t('productForm.name')}</label>
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="input-field" required />
         </div>
         <div>
-          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-slate-400)' }}>简要描述 *</label>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-slate-400)' }}>{t('productForm.summary')}</label>
           <input type="text" value={summary} onChange={(e) => setSummary(e.target.value)} className="input-field" required />
         </div>
         <div>
-          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-slate-400)' }}>详细描述 *</label>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-slate-400)' }}>{t('productForm.description')}</label>
           <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="input-field" rows={4} required />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-slate-400)' }}>价格 *</label>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-slate-400)' }}>{t('productForm.price')}</label>
             <input type="number" value={price} onChange={(e) => setPrice(e.target.value)}
               className="input-field" required step="0.01" min="0" />
           </div>
           <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-slate-400)' }}>库存 *</label>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-slate-400)' }}>{t('productForm.stock')}</label>
             <input type="number" value={stock} onChange={(e) => setStock(e.target.value)}
               className="input-field" required min="0" />
           </div>
         </div>
         <div>
-          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-slate-400)' }}>分类 *</label>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-slate-400)' }}>{t('productForm.category')}</label>
           <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="input-field" required>
-            <option value="" disabled>请选择分类</option>
+            <option value="" disabled>{t('productForm.selectCategory')}</option>
             {Array.isArray(categories) && categories.map((cat: any) => [
               <option key={cat.id} value={cat.id}>{cat.name}</option>,
               ...(cat.children || []).map((child: any) => (
@@ -242,22 +245,22 @@ export function ProductForm() {
           </select>
         </div>
         <FileUploadZone
-          label="缩略图"
+          label={t('productForm.thumbnail')}
           preview={thumbnailPreview}
           onFile={(file) => {
             if (!file) { setThumbnail(null); setThumbnailPreview(''); return; }
             setThumbnail(file); setThumbnailPreview(URL.createObjectURL(file));
           }}
-          hint="点击或拖拽上传缩略图"
+          hint={t('productForm.uploadHint')}
         />
         <FileUploadZone
-          label="详情图"
+          label={t('productForm.detailImage')}
           preview={imagePreview}
           onFile={(file) => {
             if (!file) { setImage(null); setImagePreview(''); return; }
             setImage(file); setImagePreview(URL.createObjectURL(file));
           }}
-          hint="点击或拖拽上传详情图"
+          hint={t('productForm.uploadHintDetail')}
         />
         <div className="flex gap-3 pt-2">
           <button
@@ -265,10 +268,10 @@ export function ProductForm() {
             onClick={() => navigate('/products', { replace: true })}
             className="btn-ghost"
           >
-            取消
+            {t('common.cancel')}
           </button>
           <button type="submit" disabled={isPending} className="btn-primary flex-1">
-            {isPending ? '保存中...' : '保存'}
+            {isPending ? t('common.saving') : t('common.save')}
           </button>
         </div>
       </form>

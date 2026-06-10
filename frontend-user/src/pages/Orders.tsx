@@ -1,26 +1,29 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ordersApi, type Order, type OrderItemSnapshot } from '../api/orders';
-
-const STATUS_MAP: Record<string, string> = {
-  PAID: '待发货',
-  SHIPPED: '已发货',
-  COMPLETED: '已完成',
-  CANCELLED: '已取消',
-  RETURN_PENDING: '售后中',
-  REFUNDED: '已退款',
-};
-
-const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
-  PAID: { bg: 'var(--color-gold-light)', color: 'var(--color-gold)' },
-  SHIPPED: { bg: '#e8f0fe', color: '#3b6cb4' },
-  COMPLETED: { bg: 'var(--color-sage-bg)', color: 'var(--color-sage)' },
-  CANCELLED: { bg: 'var(--color-paper-warm)', color: 'var(--color-ink-muted)' },
-  RETURN_PENDING: { bg: 'var(--color-terra-bg)', color: 'var(--color-terra)' },
-  REFUNDED: { bg: 'var(--color-paper-warm)', color: 'var(--color-ink-muted)' },
-};
+import { useLanguage } from '../hooks/useLanguage';
 
 export function Orders() {
+  const { t } = useLanguage();
+
+  const STATUS_MAP: Record<string, string> = {
+    PAID: t('status.PAID'),
+    SHIPPED: t('status.SHIPPED'),
+    COMPLETED: t('status.COMPLETED'),
+    CANCELLED: t('status.CANCELLED'),
+    RETURN_PENDING: t('status.RETURN_PENDING'),
+    REFUNDED: t('status.REFUNDED'),
+  };
+
+  const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
+    PAID: { bg: 'var(--color-gold-light)', color: 'var(--color-gold)' },
+    SHIPPED: { bg: '#e8f0fe', color: '#3b6cb4' },
+    COMPLETED: { bg: 'var(--color-sage-bg)', color: 'var(--color-sage)' },
+    CANCELLED: { bg: 'var(--color-paper-warm)', color: 'var(--color-ink-muted)' },
+    RETURN_PENDING: { bg: 'var(--color-terra-bg)', color: 'var(--color-terra)' },
+    REFUNDED: { bg: 'var(--color-paper-warm)', color: 'var(--color-ink-muted)' },
+  };
+
   const { data: orders, isLoading, isError } = useQuery({
     queryKey: ['orders'],
     queryFn: ordersApi.getAll,
@@ -30,7 +33,7 @@ export function Orders() {
     return (
       <div className="flex flex-col items-center justify-center py-32 gap-3">
         <div className="spinner" />
-        <p style={{ color: 'var(--color-ink-muted)' }} className="text-sm">加载中...</p>
+        <p style={{ color: 'var(--color-ink-muted)' }} className="text-sm">{t('common.loading')}</p>
       </div>
     );
   }
@@ -38,7 +41,7 @@ export function Orders() {
   if (isError) {
     return (
       <div className="text-center py-32">
-        <p style={{ color: 'var(--color-terra)' }}>加载订单失败</p>
+        <p style={{ color: 'var(--color-terra)' }}>{t('orders.loadFailed')}</p>
       </div>
     );
   }
@@ -46,15 +49,15 @@ export function Orders() {
   if (!orders || orders.length === 0) {
     return (
       <div className="text-center py-32">
-        <p style={{ color: 'var(--color-ink-muted)' }} className="text-lg mb-4">暂无订单</p>
-        <Link to="/" className="btn-ghost">去逛逛</Link>
+        <p style={{ color: 'var(--color-ink-muted)' }} className="text-lg mb-4">{t('orders.empty')}</p>
+        <Link to="/" className="btn-ghost">{t('product.browseShop')}</Link>
       </div>
     );
   }
 
   return (
     <div className="page-enter">
-      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', marginBottom: '1.5rem' }}>我的订单</h1>
+      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', marginBottom: '1.5rem' }}>{t('orders.title')}</h1>
       <div className="space-y-4">
         {orders.map((order: Order, idx: number) => {
           const st = STATUS_STYLE[order.status] || STATUS_STYLE.CANCELLED;
@@ -99,7 +102,7 @@ export function Orders() {
                         <img src={`/${item.productImage}`} alt={item.productName} className="w-full h-full object-cover" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-[10px]" style={{ color: 'var(--color-ink-muted)' }}>
-                          暂无
+                          {t('common.noImageShort')}
                         </div>
                       )}
                     </div>
@@ -112,7 +115,7 @@ export function Orders() {
                 ))}
               </div>
               <div className="text-right mt-3 pt-3 text-sm" style={{ borderTop: '1px solid var(--color-paper-dark)' }}>
-                <span style={{ color: 'var(--color-ink-muted)' }}>共 {order.items?.length || 0} 件，实付 </span>
+                <span style={{ color: 'var(--color-ink-muted)' }}>{t('orders.itemsAndTotal', { count: order.items?.length || 0 })}</span>
                 <span className="font-bold" style={{ color: 'var(--color-terra)' }}>
                   &yen;{Number(order.totalAmount).toFixed(2)}
                 </span>

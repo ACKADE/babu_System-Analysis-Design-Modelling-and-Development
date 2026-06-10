@@ -1,8 +1,10 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ordersApi } from '../api/orders';
+import { useLanguage } from '../hooks/useLanguage';
 
 export function PaymentSuccess() {
+  const { t } = useLanguage();
   const { orderId } = useParams<{ orderId: string }>();
 
   const { data: order, isLoading, isError } = useQuery({
@@ -16,7 +18,7 @@ export function PaymentSuccess() {
     return (
       <div className="flex flex-col items-center justify-center py-32 gap-3">
         <div className="spinner" />
-        <p style={{ color: 'var(--color-ink-muted)' }} className="text-sm">加载中...</p>
+        <p style={{ color: 'var(--color-ink-muted)' }} className="text-sm">{t('common.loading')}</p>
       </div>
     );
   }
@@ -24,8 +26,8 @@ export function PaymentSuccess() {
   if (isError || !order) {
     return (
       <div className="text-center py-32">
-        <p style={{ color: 'var(--color-ink-muted)' }} className="text-lg mb-4">订单不存在或无权查看</p>
-        <Link to="/orders" className="btn-ghost">返回我的订单</Link>
+        <p style={{ color: 'var(--color-ink-muted)' }} className="text-lg mb-4">{t('order.notFound')}</p>
+        <Link to="/orders" className="btn-ghost">{t('order.backToOrders')}</Link>
       </div>
     );
   }
@@ -41,9 +43,9 @@ export function PaymentSuccess() {
         </svg>
       </div>
       <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', color: 'var(--color-sage)', marginBottom: '0.5rem' }}>
-        支付成功
+        {t('payment.title')}
       </h1>
-      <p className="text-sm" style={{ color: 'var(--color-ink-muted)' }}>您的订单已提交，我们将尽快为您发货</p>
+      <p className="text-sm" style={{ color: 'var(--color-ink-muted)' }}>{t('payment.message')}</p>
 
       <div
         className="rounded-[3px] p-6 mt-8 text-left"
@@ -51,25 +53,25 @@ export function PaymentSuccess() {
       >
         <div className="space-y-3 text-sm">
           <div className="flex justify-between">
-            <span style={{ color: 'var(--color-ink-muted)' }}>订单号</span>
+            <span style={{ color: 'var(--color-ink-muted)' }}>{t('payment.orderNo')}</span>
             <span className="font-medium" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-ink)' }}>
               {order.orderNo}
             </span>
           </div>
           <div className="flex justify-between">
-            <span style={{ color: 'var(--color-ink-muted)' }}>收货人</span>
+            <span style={{ color: 'var(--color-ink-muted)' }}>{t('payment.recipient')}</span>
             <span style={{ color: 'var(--color-ink)' }}>{order.recipientName}</span>
           </div>
           <div className="flex justify-between">
-            <span style={{ color: 'var(--color-ink-muted)' }}>收货地址</span>
+            <span style={{ color: 'var(--color-ink-muted)' }}>{t('payment.address')}</span>
             <span style={{ color: 'var(--color-ink)' }}>{order.recipientAddress}</span>
           </div>
           <div className="flex justify-between">
-            <span style={{ color: 'var(--color-ink-muted)' }}>联系电话</span>
+            <span style={{ color: 'var(--color-ink-muted)' }}>{t('payment.phone')}</span>
             <span style={{ color: 'var(--color-ink)' }}>{order.recipientPhone}</span>
           </div>
           <div className="flex justify-between pt-3" style={{ borderTop: '1px solid var(--color-paper-dark)' }}>
-            <span style={{ color: 'var(--color-ink-muted)' }}>实付金额</span>
+            <span style={{ color: 'var(--color-ink-muted)' }}>{t('payment.totalPaid')}</span>
             <span className="text-xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-terra)' }}>
               &yen;{Number(order.totalAmount).toFixed(2)}
             </span>
@@ -79,10 +81,10 @@ export function PaymentSuccess() {
 
       <div className="mt-8 flex items-center justify-center gap-6 text-sm">
         <Link to={`/orders/${orderId}`} className="btn-primary">
-          查看订单详情
+          {t('payment.viewOrder')}
         </Link>
         <Link to="/" className="btn-ghost">
-          继续购物
+          {t('payment.continueShopping')}
         </Link>
       </div>
     </div>

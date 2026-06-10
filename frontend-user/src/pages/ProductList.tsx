@@ -3,8 +3,10 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { productsApi, type Product } from '../api/products';
 import { categoriesApi } from '../api/categories';
+import { useLanguage } from '../hooks/useLanguage';
 
 export function ProductList() {
+  const { t } = useLanguage();
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
 
@@ -49,7 +51,7 @@ export function ProductList() {
   if (isError) {
     return (
       <div className="text-center py-32">
-        <p style={{ color: 'var(--color-terra)' }} className="text-lg">加载商品失败，请稍后重试</p>
+        <p style={{ color: 'var(--color-terra)' }} className="text-lg">{t('product.loadFailed')}</p>
       </div>
     );
   }
@@ -58,7 +60,6 @@ export function ProductList() {
     <div>
       {categories && categories.length > 0 && (
         <div className="mb-10">
-          {/* Collapsed bar — always visible */}
           <div
             className="flex items-center gap-1.5 pb-3"
             style={{ borderBottom: '1px solid var(--color-paper-dark)' }}
@@ -68,7 +69,7 @@ export function ProductList() {
               className="filter-chip shrink-0"
               data-active={selectedCategoryId === null ? 'true' : 'false'}
             >
-              全部商品
+              {t('product.allProducts')}
             </button>
             {!filterOpen && (
               <button
@@ -79,17 +80,16 @@ export function ProductList() {
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M6 9l6 6 6-6" />
                 </svg>
-                筛选
+                {t('product.filter')}
               </button>
             )}
             {selectedCategoryId !== null && (
               <span className="ml-auto shrink-0" style={{ color: 'var(--color-ink-muted)', fontSize: '0.75rem' }}>
-                {filtered.length} 件商品
+                {t('product.itemsCount', { count: filtered.length })}
               </span>
             )}
           </div>
 
-          {/* Expanded panel */}
           {filterOpen && (
             <div className="filter-panel-open">
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-4 pt-4 pb-3">
@@ -127,7 +127,7 @@ export function ProductList() {
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M18 15l-6-6-6 6" />
                 </svg>
-                收起
+                {t('product.collapse')}
               </button>
             </div>
           )}
@@ -142,7 +142,7 @@ export function ProductList() {
               <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
             </svg>
           </div>
-          <p style={{ color: 'var(--color-ink-muted)' }} className="text-lg">暂无商品</p>
+          <p style={{ color: 'var(--color-ink-muted)' }} className="text-lg">{t('product.noProducts')}</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
@@ -179,7 +179,7 @@ export function ProductList() {
                   />
                 ) : (
                   <div className="card-image w-full h-full flex items-center justify-center text-sm" style={{ color: 'var(--color-ink-muted)' }}>
-                    暂无图片
+                    {t('common.noImage')}
                   </div>
                 )}
               </div>

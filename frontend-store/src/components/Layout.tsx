@@ -1,25 +1,33 @@
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
-
-const NAV_ITEMS = [
-  { path: '/', label: '仪表盘', match: (p: string) => p === '/' },
-  { path: '/products', label: '商品管理', match: (p: string) => p === '/products' || p.startsWith('/products/') },
-  { path: '/orders', label: '订单管理', match: (p: string) => p === '/orders' || p.startsWith('/orders/') },
-  { path: '/profile', label: '个人中心', match: (p: string) => p === '/profile' },
-];
+import { useLanguage } from '../hooks/useLanguage';
 
 export function Layout() {
   const { user, isLoggedIn, logout } = useAuth();
+  const { lang, t, setLang } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+
+  const NAV_ITEMS = [
+    { path: '/', label: t('nav.dashboard'), match: (p: string) => p === '/' },
+    { path: '/products', label: t('nav.products'), match: (p: string) => p === '/products' || p.startsWith('/products/') },
+    { path: '/orders', label: t('nav.orders'), match: (p: string) => p === '/orders' || p.startsWith('/orders/') },
+    { path: '/profile', label: t('nav.profile'), match: (p: string) => p === '/profile' },
+  ];
 
   const handleLogout = () => {
     queryClient.clear();
     logout();
     navigate('/login');
   };
+
+  const toggleLang = () => {
+    setLang(lang === 'zh' ? 'en' : 'zh');
+  };
+
+  const currentNavLabel = NAV_ITEMS.find((i) => i.match(location.pathname))?.label || '';
 
   return (
     <div className="flex min-h-screen" style={{ background: 'var(--color-slate-950)' }}>
@@ -33,7 +41,7 @@ export function Layout() {
             className="text-base tracking-tight"
             style={{ fontFamily: 'var(--font-display)', color: 'var(--color-slate-100)' }}
           >
-            商店管理
+            {t('nav.title')}
           </Link>
         </div>
         {isLoggedIn && (
@@ -65,7 +73,7 @@ export function Layout() {
               className="text-xs hover:opacity-70 transition-opacity"
               style={{ color: 'var(--color-slate-500)' }}
             >
-              退出登录
+              {t('nav.logout')}
             </button>
           </div>
         )}
@@ -77,11 +85,39 @@ export function Layout() {
           style={{ background: 'var(--color-slate-900)', borderColor: 'var(--color-slate-800)' }}
         >
           <span className="text-xs" style={{ color: 'var(--color-slate-500)' }}>
-            {NAV_ITEMS.find((i) => i.match(location.pathname))?.label || ''}
+            {currentNavLabel}
           </span>
-          <span className="text-xs" style={{ color: 'var(--color-slate-500)' }}>
-            {user?.name}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs" style={{ color: 'var(--color-slate-500)' }}>
+              {user?.name}
+            </span>
+            {/* Language Toggle */}
+            <button
+              onClick={toggleLang}
+              className="flex items-center text-[11px] font-semibold tracking-wide uppercase rounded-[4px] px-2.5 py-1 transition-all duration-200 select-none"
+              style={{
+                color: 'var(--color-slate-300)',
+                border: '1px solid var(--color-slate-600)',
+                background: 'var(--color-slate-800)',
+                cursor: 'pointer',
+                letterSpacing: '0.04em',
+                lineHeight: 1,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--color-slate-950)';
+                e.currentTarget.style.borderColor = 'var(--color-amber)';
+                e.currentTarget.style.background = 'var(--color-amber)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--color-slate-300)';
+                e.currentTarget.style.borderColor = 'var(--color-slate-600)';
+                e.currentTarget.style.background = 'var(--color-slate-800)';
+              }}
+              title={lang === 'zh' ? 'Switch to English' : '切换到中文'}
+            >
+              {lang === 'zh' ? 'EN' : '中'}
+            </button>
+          </div>
         </header>
         <main className="flex-1 p-6 page-enter">
           <Outlet />

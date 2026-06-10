@@ -8,18 +8,11 @@ import {
   type Order,
   type OrderItemSnapshot,
 } from '../api/orders';
-
-const STATUS_MAP: Record<string, string> = {
-  PAID: '待发货',
-  SHIPPED: '已发货',
-  COMPLETED: '已完成',
-  CANCELLED: '已取消',
-  RETURN_PENDING: '售后中',
-  REFUNDED: '已退款',
-};
+import { useLanguage } from '../hooks/useLanguage';
 
 export function OrderDetail() {
   const { id } = useParams<{ id: string }>();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [returnReason, setReturnReason] = useState('');
@@ -28,6 +21,15 @@ export function OrderDetail() {
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewContent, setReviewContent] = useState('');
   const [showReviewForm, setShowReviewForm] = useState(false);
+
+  const STATUS_MAP: Record<string, string> = {
+    PAID: t('status.PAID'),
+    SHIPPED: t('status.SHIPPED'),
+    COMPLETED: t('status.COMPLETED'),
+    CANCELLED: t('status.CANCELLED'),
+    RETURN_PENDING: t('status.RETURN_PENDING'),
+    REFUNDED: t('status.REFUNDED'),
+  };
 
   const { data: order, isLoading, isError } = useQuery({
     queryKey: ['order', id],
@@ -74,7 +76,6 @@ export function OrderDetail() {
     },
   });
 
-  // Reset mutation state when navigating to a different order
   useEffect(() => {
     cancelMutation.reset();
     confirmMutation.reset();
@@ -86,7 +87,7 @@ export function OrderDetail() {
     return (
       <div className="flex flex-col items-center justify-center py-32 gap-3">
         <div className="spinner" />
-        <p style={{ color: 'var(--color-ink-muted)' }} className="text-sm">加载中...</p>
+        <p style={{ color: 'var(--color-ink-muted)' }} className="text-sm">{t('common.loading')}</p>
       </div>
     );
   }
@@ -94,8 +95,8 @@ export function OrderDetail() {
   if (isError || !order) {
     return (
       <div className="text-center py-32">
-        <p style={{ color: 'var(--color-ink-muted)' }} className="text-lg mb-4">订单不存在或无权查看</p>
-        <Link to="/orders" className="btn-ghost">返回我的订单</Link>
+        <p style={{ color: 'var(--color-ink-muted)' }} className="text-lg mb-4">{t('order.notFound')}</p>
+        <Link to="/orders" className="btn-ghost">{t('order.backToOrders')}</Link>
       </div>
     );
   }
@@ -108,7 +109,7 @@ export function OrderDetail() {
   const actionErrorMessage =
     cancelMutation.error?.response?.data?.message ||
     confirmMutation.error?.response?.data?.message ||
-    '操作失败';
+    t('common.error');
 
   return (
     <div className="max-w-2xl mx-auto page-enter">
@@ -121,10 +122,10 @@ export function OrderDetail() {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
-          返回订单列表
+          {t('orders.backToList')}
         </button>
       </div>
-      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', marginBottom: '1.5rem' }}>订单详情</h1>
+      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', marginBottom: '1.5rem' }}>{t('order.title')}</h1>
 
       <div
         className="rounded-[3px] p-6 space-y-4"
@@ -141,13 +142,13 @@ export function OrderDetail() {
         </div>
 
         <div className="text-sm space-y-1.5" style={{ color: 'var(--color-ink-light)' }}>
-          <p>收货人：{o.recipientName}</p>
-          <p>收货地址：{o.recipientAddress}</p>
-          <p>联系电话：{o.recipientPhone}</p>
+          <p>{t('order.recipientLabel')}{o.recipientName}</p>
+          <p>{t('order.addressLabel')}{o.recipientAddress}</p>
+          <p>{t('order.phoneLabel')}{o.recipientPhone}</p>
         </div>
 
         <div className="pt-4" style={{ borderTop: '1px solid var(--color-paper-dark)' }}>
-          <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--color-ink)' }}>商品清单</h3>
+          <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--color-ink)' }}>{t('order.itemsLabel')}</h3>
           {o.items?.map((item: OrderItemSnapshot) => (
             <div
               key={item.id}
@@ -162,7 +163,7 @@ export function OrderDetail() {
                   <img src={`/${item.productImage}`} alt={item.productName} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-[10px]" style={{ color: 'var(--color-ink-muted)' }}>
-                    暂无
+                    {t('common.noImageShort')}
                   </div>
                 )}
               </div>
@@ -180,7 +181,7 @@ export function OrderDetail() {
         </div>
 
         <div className="pt-4 text-right" style={{ borderTop: '1px solid var(--color-paper-dark)' }}>
-          <span style={{ color: 'var(--color-ink-muted)' }} className="text-sm">实付金额：</span>
+          <span style={{ color: 'var(--color-ink-muted)' }} className="text-sm">{t('order.totalLabel')}</span>
           <span className="text-xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-terra)' }}>
             &yen;{Number(o.totalAmount).toFixed(2)}
           </span>
@@ -191,12 +192,12 @@ export function OrderDetail() {
             className="rounded-[3px] p-3 text-sm"
             style={{ background: 'var(--color-paper-warm)' }}
           >
-            <p style={{ color: 'var(--color-ink-light)' }}>退货原因：{o.returnReason}</p>
+            <p style={{ color: 'var(--color-ink-light)' }}>{t('order.returnReason')}{o.returnReason}</p>
             {o.returnRejectedReason && (
-              <p className="mt-1" style={{ color: 'var(--color-terra)' }}>拒绝原因：{o.returnRejectedReason}</p>
+              <p className="mt-1" style={{ color: 'var(--color-terra)' }}>{t('order.rejectReason')}{o.returnRejectedReason}</p>
             )}
             {o.returnAttempts > 0 && (
-              <p className="mt-1" style={{ color: 'var(--color-ink-muted)' }}>已申请 {o.returnAttempts}/3 次</p>
+              <p className="mt-1" style={{ color: 'var(--color-ink-muted)' }}>{t('order.returnAttempts', { current: o.returnAttempts, max: 3 })}</p>
             )}
           </div>
         )}
@@ -205,22 +206,22 @@ export function OrderDetail() {
       <div className="mt-4 flex flex-wrap gap-3">
         {canCancel && (
           <button
-            onClick={() => { if (window.confirm('确认要取消此订单吗？')) cancelMutation.mutate(); }}
+            onClick={() => { if (window.confirm(t('order.confirmCancel'))) cancelMutation.mutate(); }}
             disabled={cancelMutation.isPending}
             className="btn-ghost"
             style={{ borderColor: 'var(--color-terra)', color: 'var(--color-terra)' }}
           >
-            {cancelMutation.isPending ? '取消中...' : '取消订单'}
+            {cancelMutation.isPending ? t('order.cancelling') : t('order.cancelOrder')}
           </button>
         )}
         {canConfirm && (
           <button
-            onClick={() => { if (window.confirm('确认已收到货物吗？')) confirmMutation.mutate(); }}
+            onClick={() => { if (window.confirm(t('order.confirmReceipt'))) confirmMutation.mutate(); }}
             disabled={confirmMutation.isPending}
             className="btn-primary"
             style={{ background: 'var(--color-sage)' }}
           >
-            {confirmMutation.isPending ? '确认中...' : '确认收货'}
+            {confirmMutation.isPending ? t('order.confirming') : t('order.confirmReceiptBtn')}
           </button>
         )}
         {canReturn && !showReturnForm && (
@@ -229,7 +230,7 @@ export function OrderDetail() {
             className="btn-ghost"
             style={{ borderColor: 'var(--color-gold)', color: 'var(--color-gold)' }}
           >
-            申请售后
+            {t('order.requestReturn')}
           </button>
         )}
       </div>
@@ -245,11 +246,11 @@ export function OrderDetail() {
           className="mt-4 rounded-[3px] p-4"
           style={{ background: 'white', boxShadow: 'var(--shadow-card)' }}
         >
-          <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--color-ink)' }}>申请退货</h3>
+          <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--color-ink)' }}>{t('order.returnFormTitle')}</h3>
           <textarea
             value={returnReason}
             onChange={(e) => setReturnReason(e.target.value)}
-            placeholder="请描述退货原因（至少5个字）"
+            placeholder={t('order.returnPlaceholder')}
             className="input-field"
             rows={3}
           />
@@ -258,7 +259,7 @@ export function OrderDetail() {
               onClick={() => { setShowReturnForm(false); setReturnReason(''); }}
               className="btn-ghost"
             >
-              取消
+              {t('common.cancel')}
             </button>
             <button
               onClick={() => returnMutation.mutate()}
@@ -266,12 +267,12 @@ export function OrderDetail() {
               className="btn-primary"
               style={{ background: 'var(--color-gold)' }}
             >
-              {returnMutation.isPending ? '提交中...' : '提交申请'}
+              {returnMutation.isPending ? t('order.submitting') : t('order.submitRequest')}
             </button>
           </div>
           {returnMutation.isError && (
             <p className="text-sm mt-2" style={{ color: 'var(--color-terra)' }}>
-              {returnMutation.error?.response?.data?.message || '申请失败'}
+              {returnMutation.error?.response?.data?.message || t('order.requestFailed')}
             </p>
           )}
         </div>
@@ -287,7 +288,7 @@ export function OrderDetail() {
             className="btn-primary"
             style={{ background: 'var(--color-gold)' }}
           >
-            评价商品
+            {t('order.reviewProduct')}
           </button>
         </div>
       )}
@@ -297,10 +298,10 @@ export function OrderDetail() {
           className="mt-4 rounded-[3px] p-4"
           style={{ background: 'white', boxShadow: 'var(--shadow-card)' }}
         >
-          <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--color-ink)' }}>评价商品</h3>
+          <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--color-ink)' }}>{t('order.reviewFormTitle')}</h3>
           <div className="space-y-3">
             <div>
-              <label className="block text-sm mb-1.5" style={{ color: 'var(--color-ink-light)' }}>商品</label>
+              <label className="block text-sm mb-1.5" style={{ color: 'var(--color-ink-light)' }}>{t('order.reviewProductLabel')}</label>
               <select
                 value={reviewProductId}
                 onChange={(e) => setReviewProductId(Number(e.target.value))}
@@ -312,7 +313,7 @@ export function OrderDetail() {
               </select>
             </div>
             <div>
-              <label className="block text-sm mb-1.5" style={{ color: 'var(--color-ink-light)' }}>评分</label>
+              <label className="block text-sm mb-1.5" style={{ color: 'var(--color-ink-light)' }}>{t('order.reviewRating')}</label>
               <div className="flex gap-1">
                 {[1, 2, 3, 4, 5].map((star) => (
                   <button
@@ -328,7 +329,7 @@ export function OrderDetail() {
               </div>
             </div>
             <div>
-              <label className="block text-sm mb-1.5" style={{ color: 'var(--color-ink-light)' }}>评价内容（可选）</label>
+              <label className="block text-sm mb-1.5" style={{ color: 'var(--color-ink-light)' }}>{t('order.reviewContent')}</label>
               <textarea
                 value={reviewContent}
                 onChange={(e) => setReviewContent(e.target.value)}
@@ -337,19 +338,19 @@ export function OrderDetail() {
               />
             </div>
             <div className="flex gap-2">
-              <button onClick={() => setShowReviewForm(false)} className="btn-ghost">取消</button>
+              <button onClick={() => setShowReviewForm(false)} className="btn-ghost">{t('common.cancel')}</button>
               <button
                 onClick={() => reviewMutation.mutate()}
                 disabled={reviewMutation.isPending}
                 className="btn-primary"
                 style={{ background: 'var(--color-gold)' }}
               >
-                {reviewMutation.isPending ? '提交中...' : '提交评价'}
+                {reviewMutation.isPending ? t('order.submitting') : t('order.submitReview')}
               </button>
             </div>
             {reviewMutation.isError && (
               <p className="text-sm" style={{ color: 'var(--color-terra)' }}>
-                {reviewMutation.error?.response?.data?.message || '评价失败'}
+                {reviewMutation.error?.response?.data?.message || t('order.reviewFailed')}
               </p>
             )}
           </div>
@@ -361,7 +362,7 @@ export function OrderDetail() {
           className="mt-4 rounded-[3px] p-4"
           style={{ background: 'white', boxShadow: 'var(--shadow-card)' }}
         >
-          <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--color-ink)' }}>我的评价</h3>
+          <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--color-ink)' }}>{t('order.myReview')}</h3>
           <p style={{ color: 'var(--color-gold)', fontSize: '0.9rem' }}>
             {'★'.repeat(o.review.rating)}{'☆'.repeat(5 - o.review.rating)}
           </p>
